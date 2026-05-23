@@ -16,6 +16,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 
 // src/server.ts
 var LOG_DIR = path.resolve(process.cwd(), "logs");
@@ -1143,7 +1144,10 @@ var employeeSchema = new mongoose2.Schema(
       type: String,
       required: true
     },
-    otp: String,
+    password: {
+      type: String,
+      required: true
+    },
     isVerified: {
       type: Boolean,
       default: false
@@ -1157,7 +1161,7 @@ var employee_model_default = mongoose2.model("Employee", employeeSchema);
 dotenv.config();
 var sendOtpEmail = async (email, otp) => {
   try {
-    const transporter = nodemailer.createTransport({
+    const transporter2 = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.NODE_MAILER_EMAIL,
@@ -1170,7 +1174,7 @@ var sendOtpEmail = async (email, otp) => {
       subject: "Employee Verification OTP",
       text: `Your OTP is: ${otp}`
     };
-    const info = await transporter.sendMail(mailOptions);
+    const info = await transporter2.sendMail(mailOptions);
     console.log("OTP Email Sent Successfully");
     console.log(info.response);
   } catch (error) {
@@ -1262,14 +1266,157 @@ var verifyEmployeeOtp = async (req, res) => {
     });
   }
 };
+var invitationSchema = new mongoose2.Schema({
+  email: {
+    type: String,
+    required: true
+  },
+  token: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
+  },
+  department: {
+    type: String,
+    required: true
+  },
+  role: {
+    type: String,
+    required: true
+  },
+  expiresAt: {
+    type: Date,
+    required: true
+  }
+}, {
+  timestamps: true
+});
+var invitation_model_default = mongoose2.model("Invitation", invitationSchema);
+dotenv.config();
+var transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER || "test@example.com",
+    pass: process.env.EMAIL_PASS || "password"
+  }
+});
+var sendInvite = async (req, res) => {
+  try {
+    const { email, department, role } = req.body;
+    if (!email || !department || !role) {
+      return res.status(400).json({ success: false, message: "Email, department, and role are required." });
+    }
+    const existingEmployee = await employee_model_default.findOne({ email });
+    if (existingEmployee) {
+      return res.status(400).json({ success: false, message: "Employee already exists with this email." });
+    }
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
+    await invitation_model_default.findOneAndDelete({ email });
+    const newInvitation = new invitation_model_default({
+      email,
+      token,
+      department,
+      role,
+      expiresAt
+    });
+    await newInvitation.save();
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const inviteLink = `${frontendUrl}/set-password?token=${token}`;
+    const mailOptions = {
+      from: process.env.EMAIL_USER || "test@example.com",
+      to: email,
+      subject: "You've been invited to join the Company",
+      html: `
+        <h2>Welcome aboard! Your account is ready.</h2>
+        <p>Click the button below to set your password and get started. This link expires in 24 hours.</p>
+        <a href="${inviteLink}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Set My Password &rarr;</a>
+        <br><br>
+        <p>If the button doesn't work, copy and paste this link into your browser:</p>
+        <p>${inviteLink}</p>
+        <p>If you didn't expect this email, you can safely ignore it.</p>
+      `
+    };
+    try {
+      await transporter.sendMail(mailOptions);
+    } catch (mailError) {
+      console.warn("Failed to send email (check NodeMailer config):", mailError);
+    }
+    console.log("\n=======================================================");
+    console.log("INVITATION LINK GENERATED (Copy and paste into browser):");
+    console.log(inviteLink);
+    console.log("=======================================================\n");
+    res.status(200).json({
+      success: true,
+      message: `Invite sent to ${email}`,
+      // Always returning the token and link so you can easily test it on the frontend!
+      token,
+      link: inviteLink
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+var verifyToken = async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ success: false, message: "Token is required." });
+    }
+    const invitation = await invitation_model_default.findOne({ token });
+    if (!invitation) {
+      return res.status(400).json({ success: false, message: "Invalid token." });
+    }
+    if (invitation.expiresAt < /* @__PURE__ */ new Date()) {
+      return res.status(400).json({ success: false, message: "Token has expired. Please request a new link." });
+    }
+    res.status(200).json({ success: true, message: "Token is valid.", email: invitation.email });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+var setPassword = async (req, res) => {
+  try {
+    const { token, password, name, mobile, blood } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ success: false, message: "Token and password are required." });
+    }
+    const invitation = await invitation_model_default.findOne({ token });
+    if (!invitation) {
+      return res.status(400).json({ success: false, message: "Invalid or expired token." });
+    }
+    if (invitation.expiresAt < /* @__PURE__ */ new Date()) {
+      return res.status(400).json({ success: false, message: "Token has expired." });
+    }
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const employeeId = "EMP-" + Date.now().toString().slice(-6);
+    const newEmployee = new employee_model_default({
+      employeeId,
+      email: invitation.email,
+      department: invitation.department,
+      role: invitation.role,
+      password: hashedPassword,
+      name: name || "Unknown",
+      mobile: mobile || "0000000000",
+      blood: blood || "O+",
+      isVerified: true
+    });
+    await newEmployee.save();
+    await invitation_model_default.findByIdAndDelete(invitation._id);
+    res.status(200).json({ success: true, message: "Password set successfully. You can now login." });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 // src/routes/employeeRoutes.ts
 var router6 = express6.Router();
-router6.post(
-  "/register",
-  createEmployee
-);
+router6.post("/register", createEmployee);
 router6.post("/verify-otp", verifyEmployeeOtp);
+router6.post("/send-invite", sendInvite);
+router6.get("/verify-token", verifyToken);
+router6.post("/set-password", setPassword);
 var employeeRoutes_default = router6;
 
 // src/server.ts
