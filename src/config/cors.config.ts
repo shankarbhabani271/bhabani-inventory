@@ -10,6 +10,12 @@ export const applyCores = ({ app }: { app: AppType }) => {
     "https://bagforinveo.onrender.com"
   ];
 
+  if (process.env.CLIENT_URL) {
+    allowedOrigins.push(process.env.CLIENT_URL);
+    // Also push a version without trailing slash if present, for safety
+    allowedOrigins.push(process.env.CLIENT_URL.replace(/\/$/, ""));
+  }
+
   app.use(
     cors({
       origin: (origin, callback) => {

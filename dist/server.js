@@ -1,5 +1,5 @@
 import cookieParser from 'cookie-parser';
-import express6, { Router } from 'express';
+import express8, { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import morgan from 'morgan';
@@ -145,7 +145,7 @@ var getUserDetails = async (req, res) => {
 };
 
 // src/routes/userdetails.routes.ts
-var router = express6.Router();
+var router = express8.Router();
 router.post("/userdetails", createUserDetails);
 router.get("/userdetails", getUserDetails);
 var userdetails_routes_default = router;
@@ -439,11 +439,65 @@ var getVendor = async (req, res) => {
     });
   }
 };
+var getVendorById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const vendor = await vendor_model_default.findById(id);
+    if (!vendor) {
+      return res.status(404).json({ success: false, message: "Vendor not found." });
+    }
+    res.status(200).json(vendor);
+  } catch (error) {
+    console.log("GET BY ID ERROR:", error);
+    res.status(500).json({ success: false, message: "Error fetching vendor details." });
+  }
+};
+var updateVendor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, secondphone, email, primaryaddress } = req.body;
+    const updatedVendor = await vendor_model_default.findByIdAndUpdate(
+      id,
+      { name, phone, secondphone, email, primaryaddress },
+      { new: true }
+    );
+    if (!updatedVendor) {
+      return res.status(404).json({ success: false, message: "Vendor not found." });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Vendor updated successfully.",
+      data: updatedVendor
+    });
+  } catch (error) {
+    console.log("UPDATE ERROR:", error);
+    res.status(500).json({ success: false, message: "Error updating vendor." });
+  }
+};
+var deleteVendor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedVendor = await vendor_model_default.findByIdAndDelete(id);
+    if (!deletedVendor) {
+      return res.status(404).json({ success: false, message: "Vendor not found." });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Vendor deleted successfully."
+    });
+  } catch (error) {
+    console.log("DELETE ERROR:", error);
+    res.status(500).json({ success: false, message: "Error deleting vendor." });
+  }
+};
 
 // src/routes/vendor.routes.ts
-var router2 = express6.Router();
+var router2 = express8.Router();
 router2.post("/create", createVendor);
 router2.get("/get", getVendor);
+router2.get("/:id", getVendorById);
+router2.put("/:id", updateVendor);
+router2.delete("/:id", deleteVendor);
 var vendor_routes_default = router2;
 dotenv.config();
 var envConfig = {
@@ -741,6 +795,10 @@ var applyCores = ({ app: app2 }) => {
     "http://localhost:5174",
     "https://bagforinveo.onrender.com"
   ];
+  if (process.env.CLIENT_URL) {
+    allowedOrigins.push(process.env.CLIENT_URL);
+    allowedOrigins.push(process.env.CLIENT_URL.replace(/\/$/, ""));
+  }
   app2.use(
     cors({
       origin: (origin, callback) => {
@@ -1024,7 +1082,7 @@ var rejectMaterial = async (req, res) => {
 };
 
 // src/routes/material.routes.ts
-var router3 = express6.Router();
+var router3 = express8.Router();
 router3.post("/", createMaterial);
 router3.get("/", getMaterials);
 router3.put("/:id/approve", approveMaterial);
@@ -1109,7 +1167,7 @@ router4.get("/:id", getSingleProductMenu);
 router4.put("/:id", updateProductMenu);
 router4.delete("/:id", deleteProductMenu);
 var productmenu_routes_default = router4;
-var router5 = express6.Router();
+var router5 = express8.Router();
 router5.post("/login", loginController);
 var authRoutes_default = router5;
 var employeeSchema = new mongoose2.Schema(
@@ -1411,24 +1469,323 @@ var setPassword = async (req, res) => {
 };
 
 // src/routes/employeeRoutes.ts
-var router6 = express6.Router();
+var router6 = express8.Router();
 router6.post("/register", createEmployee);
 router6.post("/verify-otp", verifyEmployeeOtp);
 router6.post("/send-invite", sendInvite);
 router6.get("/verify-token", verifyToken);
 router6.post("/set-password", setPassword);
+router6.post("/set-password/:token", setPassword);
 var employeeRoutes_default = router6;
+var purchaseRequestSchema = new mongoose2.Schema(
+  {
+    department: {
+      type: String,
+      required: true
+    },
+    vendor: {
+      type: String,
+      required: true
+    },
+    products: [
+      {
+        name: { type: String, required: true },
+        quantity: { type: Number, required: true, default: 1 },
+        price: { type: Number, required: true, default: 0 }
+      }
+    ],
+    totalAmount: {
+      type: Number,
+      required: true,
+      default: 0
+    },
+    status: {
+      type: String,
+      required: true,
+      enum: ["Pending", "Approved", "Rejected", "Completed"],
+      default: "Pending"
+    },
+    requestedBy: {
+      type: String,
+      required: true,
+      default: "Admin"
+    },
+    approvedBy: {
+      type: String,
+      default: ""
+    }
+  },
+  { timestamps: true }
+);
+var purchaseRequest_model_default = mongoose2.model("PurchaseRequest", purchaseRequestSchema);
+
+// src/controllers/purchaseRequest.controller.ts
+var createPurchaseRequest = async (req, res) => {
+  try {
+    const { department, vendor, products, requestedBy } = req.body;
+    if (!department || !vendor || !products || !Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ success: false, message: "Department, vendor, and products are required." });
+    }
+    const totalAmount = products.reduce((acc, prod) => {
+      const qty = Number(prod.quantity) || 0;
+      const prc = Number(prod.price) || 0;
+      return acc + qty * prc;
+    }, 0);
+    const newRequest = await purchaseRequest_model_default.create({
+      department,
+      vendor,
+      products,
+      totalAmount,
+      requestedBy: requestedBy || "Admin",
+      status: "Pending"
+    });
+    res.status(201).json({
+      success: true,
+      message: "Purchase request created successfully",
+      data: newRequest
+    });
+  } catch (error) {
+    console.error("CREATE PURCHASE REQUEST ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating purchase request",
+      error: error.message
+    });
+  }
+};
+var getAllPurchaseRequests = async (req, res) => {
+  try {
+    const requests = await purchaseRequest_model_default.find().sort({ createdAt: -1 });
+    res.status(200).json(requests);
+  } catch (error) {
+    console.error("GET PURCHASE REQUESTS ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching purchase requests",
+      error: error.message
+    });
+  }
+};
+var updatePurchaseRequestStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, approvedBy } = req.body;
+    if (!status) {
+      return res.status(400).json({ success: false, message: "Status is required." });
+    }
+    const updatedRequest = await purchaseRequest_model_default.findByIdAndUpdate(
+      id,
+      { status, approvedBy: approvedBy || "Admin" },
+      { new: true }
+    );
+    if (!updatedRequest) {
+      return res.status(404).json({ success: false, message: "Purchase request not found." });
+    }
+    res.status(200).json({
+      success: true,
+      message: `Purchase request status updated to ${status} successfully.`,
+      data: updatedRequest
+    });
+  } catch (error) {
+    console.error("UPDATE PURCHASE REQUEST STATUS ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating purchase request status",
+      error: error.message
+    });
+  }
+};
+var deletePurchaseRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedRequest = await purchaseRequest_model_default.findByIdAndDelete(id);
+    if (!deletedRequest) {
+      return res.status(404).json({ success: false, message: "Purchase request not found." });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Purchase request deleted successfully."
+    });
+  } catch (error) {
+    console.error("DELETE PURCHASE REQUEST ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting purchase request",
+      error: error.message
+    });
+  }
+};
+
+// src/routes/purchaseRequest.routes.ts
+var router7 = express8.Router();
+router7.post("/create", createPurchaseRequest);
+router7.get("/get", getAllPurchaseRequests);
+router7.put("/status/:id", updatePurchaseRequestStatus);
+router7.delete("/:id", deletePurchaseRequest);
+var purchaseRequest_routes_default = router7;
+var inventorySchema = new mongoose2.Schema(
+  {
+    itemName: {
+      type: String,
+      required: true
+    },
+    category: {
+      type: String,
+      required: true,
+      default: "General"
+    },
+    stockQuantity: {
+      type: Number,
+      required: true,
+      default: 0
+    },
+    price: {
+      type: Number,
+      required: true,
+      default: 0
+    },
+    warehouse: {
+      type: String,
+      required: true,
+      default: "Main Warehouse"
+    },
+    supplier: {
+      type: String,
+      required: true
+    },
+    status: {
+      type: String,
+      required: true,
+      enum: ["In Stock", "Out of Stock", "Low Stock"],
+      default: "In Stock"
+    }
+  },
+  { timestamps: true }
+);
+var inventory_model_default = mongoose2.model("Inventory", inventorySchema);
+
+// src/controllers/inventory.controller.ts
+var getStockStatus = (quantity) => {
+  if (quantity <= 0) return "Out of Stock";
+  if (quantity < 10) return "Low Stock";
+  return "In Stock";
+};
+var createInventoryItem = async (req, res) => {
+  try {
+    const { itemName, category, stockQuantity, price, warehouse, supplier } = req.body;
+    if (!itemName || !supplier) {
+      return res.status(400).json({ success: false, message: "Item name and supplier are required." });
+    }
+    const qty = Number(stockQuantity) || 0;
+    const itemStatus = getStockStatus(qty);
+    const newItem = await inventory_model_default.create({
+      itemName,
+      category: category || "General",
+      stockQuantity: qty,
+      price: Number(price) || 0,
+      warehouse: warehouse || "Main Warehouse",
+      supplier,
+      status: itemStatus
+    });
+    res.status(201).json({
+      success: true,
+      message: "Inventory item added successfully",
+      data: newItem
+    });
+  } catch (error) {
+    console.error("CREATE INVENTORY ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error adding inventory item",
+      error: error.message
+    });
+  }
+};
+var getAllInventoryItems = async (req, res) => {
+  try {
+    const items = await inventory_model_default.find().sort({ createdAt: -1 });
+    res.status(200).json(items);
+  } catch (error) {
+    console.error("GET INVENTORY ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching inventory items",
+      error: error.message
+    });
+  }
+};
+var updateInventoryItem = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { itemName, category, stockQuantity, price, warehouse, supplier } = req.body;
+    const item = await inventory_model_default.findById(id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: "Inventory item not found." });
+    }
+    if (itemName !== void 0) item.itemName = itemName;
+    if (category !== void 0) item.category = category;
+    if (price !== void 0) item.price = Number(price) || 0;
+    if (warehouse !== void 0) item.warehouse = warehouse;
+    if (supplier !== void 0) item.supplier = supplier;
+    if (stockQuantity !== void 0) {
+      const qty = Number(stockQuantity) || 0;
+      item.stockQuantity = qty;
+      item.status = getStockStatus(qty);
+    }
+    await item.save();
+    res.status(200).json({
+      success: true,
+      message: "Inventory item updated successfully",
+      data: item
+    });
+  } catch (error) {
+    console.error("UPDATE INVENTORY ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating inventory item",
+      error: error.message
+    });
+  }
+};
+var deleteInventoryItem = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedItem = await inventory_model_default.findByIdAndDelete(id);
+    if (!deletedItem) {
+      return res.status(404).json({ success: false, message: "Inventory item not found." });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Inventory item deleted successfully."
+    });
+  } catch (error) {
+    console.error("DELETE INVENTORY ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error deleting inventory item",
+      error: error.message
+    });
+  }
+};
+
+// src/routes/inventory.routes.ts
+var router8 = express8.Router();
+router8.post("/create", createInventoryItem);
+router8.get("/get", getAllInventoryItems);
+router8.put("/:id", updateInventoryItem);
+router8.delete("/:id", deleteInventoryItem);
+var inventory_routes_default = router8;
 
 // src/server.ts
 var __filename$1 = fileURLToPath(import.meta.url);
 var __dirname$1 = path.dirname(__filename$1);
-var app = express6();
+var app = express8();
 var publicDir = path.join(__dirname$1, "..", "public");
-app.use(express6.static(publicDir));
+app.use(express8.static(publicDir));
 var server = createServer(app);
 app.use(response_middleware_default);
-app.use(express6.json());
-app.use(express6.urlencoded({ extended: true }));
+app.use(express8.json());
+app.use(express8.urlencoded({ extended: true }));
 app.use(cookieParser());
 applyCores({ app });
 var initialize = () => {
@@ -1447,6 +1804,8 @@ app.use("/api", userdetails_routes_default);
 app.use("/api/products", product_routes_default);
 app.use("/api/material", material_routes_default);
 app.use("/api/vendor", vendor_routes_default);
+app.use("/api/purchase-request", purchaseRequest_routes_default);
+app.use("/api/inventory", inventory_routes_default);
 app.use("/api/productmenu", productmenu_routes_default);
 app.use("/api/auth", authRoutes_default);
 app.use("/api/employees", employeeRoutes_default);

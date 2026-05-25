@@ -14,5 +14,6 @@ router.post("/verify-otp", verifyEmployeeOtp);
 router.post("/send-invite", sendInvite); // Admin sends invite
 router.get("/verify-token", verifyToken); // Frontend verifies token
 router.post("/set-password", setPassword); // Employee sets password
+router.post("/set-password/:token", setPassword); // Employee sets password via route param
 
 export default router;
