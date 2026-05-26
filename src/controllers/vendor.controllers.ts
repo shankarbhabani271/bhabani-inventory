@@ -4,7 +4,7 @@ import Vendor from "../models/vendor.model.js";
 // CREATE
 export const createVendor = async (req: Request, res: Response) => {
   try {
-    const { name, phone, secondphone, email, primaryaddress } = req.body;
+    const { name, phone, secondphone, email, primaryaddress, contactPerson, gst, productType, category, status } = req.body;
 
     const existingVendor = await Vendor.findOne({ email });
 
@@ -18,9 +18,14 @@ export const createVendor = async (req: Request, res: Response) => {
     const vendor = await Vendor.create({
       name,
       phone,
-      secondphone,
+      secondphone: secondphone || phone,
       email,
       primaryaddress,
+      contactPerson,
+      gst,
+      productType,
+      category,
+      status: status || "Active"
     });
 
     res.status(201).json({
@@ -75,11 +80,11 @@ export const getVendorById = async (req: Request, res: Response) => {
 export const updateVendor = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, phone, secondphone, email, primaryaddress } = req.body;
+    const { name, phone, secondphone, email, primaryaddress, contactPerson, gst, productType, category, status } = req.body;
 
     const updatedVendor = await Vendor.findByIdAndUpdate(
       id,
-      { name, phone, secondphone, email, primaryaddress },
+      { name, phone, secondphone: secondphone || phone, email, primaryaddress, contactPerson, gst, productType, category, status },
       { new: true }
     );
 

@@ -57,3 +57,29 @@ const otp = String(
     });
   }
 };
+
+export const verifyEmployeeOtp = async (req: any, res: any) => {
+  try {
+    const { email, otp } = req.body;
+    const employee = await Employee.findOne({ email });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found"
+      });
+    }
+    // We set isVerified to true upon verification
+    employee.isVerified = true;
+    await employee.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully"
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};

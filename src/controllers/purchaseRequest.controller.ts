@@ -4,7 +4,7 @@ import PurchaseRequest from "../models/purchaseRequest.model.js";
 // CREATE
 export const createPurchaseRequest = async (req: Request, res: Response) => {
   try {
-    const { department, vendor, products, requestedBy } = req.body;
+    const { department, vendor, products, requestedBy, deliveryAddress, notes, priority } = req.body;
 
     if (!department || !vendor || !products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ success: false, message: "Department, vendor, and products are required." });
@@ -24,16 +24,20 @@ export const createPurchaseRequest = async (req: Request, res: Response) => {
       totalAmount,
       requestedBy: requestedBy || "Admin",
       status: "Pending",
+      deliveryAddress: deliveryAddress || "",
+      notes: notes || "",
+      priority: priority || "Medium",
+      deliveryStatus: "Pending"
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Purchase request created successfully",
       data: newRequest,
     });
   } catch (error: any) {
     console.error("CREATE PURCHASE REQUEST ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error creating purchase request",
       error: error.message,
@@ -42,13 +46,13 @@ export const createPurchaseRequest = async (req: Request, res: Response) => {
 };
 
 // GET ALL
-export const getAllPurchaseRequests = async (req: Request, res: Response) => {
+export const getAllPurchaseRequests = async (_req: Request, res: Response) => {
   try {
     const requests = await PurchaseRequest.find().sort({ createdAt: -1 });
-    res.status(200).json(requests);
+    return res.status(200).json(requests);
   } catch (error: any) {
     console.error("GET PURCHASE REQUESTS ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error fetching purchase requests",
       error: error.message,
@@ -60,15 +64,24 @@ export const getAllPurchaseRequests = async (req: Request, res: Response) => {
 export const updatePurchaseRequestStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, approvedBy } = req.body;
+    const { status, approvedBy, deliveryStatus } = req.body;
 
-    if (!status) {
-      return res.status(400).json({ success: false, message: "Status is required." });
+    if (!status && !deliveryStatus) {
+      return res.status(400).json({ success: false, message: "Status or Delivery Status is required." });
+    }
+
+    const updateData: any = {};
+    if (status !== undefined) {
+      updateData.status = status;
+      updateData.approvedBy = approvedBy || "Admin";
+    }
+    if (deliveryStatus !== undefined) {
+      updateData.deliveryStatus = deliveryStatus;
     }
 
     const updatedRequest = await PurchaseRequest.findByIdAndUpdate(
       id,
-      { status, approvedBy: approvedBy || "Admin" },
+      updateData,
       { new: true }
     );
 
@@ -76,14 +89,14 @@ export const updatePurchaseRequestStatus = async (req: Request, res: Response) =
       return res.status(404).json({ success: false, message: "Purchase request not found." });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: `Purchase request status updated to ${status} successfully.`,
+      message: `Purchase request status updated successfully.`,
       data: updatedRequest,
     });
   } catch (error: any) {
     console.error("UPDATE PURCHASE REQUEST STATUS ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error updating purchase request status",
       error: error.message,
@@ -101,13 +114,13 @@ export const deletePurchaseRequest = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Purchase request not found." });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Purchase request deleted successfully.",
     });
   } catch (error: any) {
     console.error("DELETE PURCHASE REQUEST ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error deleting purchase request",
       error: error.message,

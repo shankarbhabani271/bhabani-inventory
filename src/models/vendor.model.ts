@@ -23,6 +23,26 @@ const uservendorschema = new mongoose.Schema(
         primaryaddress:{
             type:String,
             required:true
+        },
+        contactPerson:{
+            type:String,
+            required:false
+        },
+        gst:{
+            type:String,
+            required:false
+        },
+        productType:{
+            type:String,
+            required:false
+        },
+        category:{
+            type:String,
+            required:false
+        },
+        status:{
+            type:String,
+            default:"Active"
         }
     },{ timestamps:true}
 )
