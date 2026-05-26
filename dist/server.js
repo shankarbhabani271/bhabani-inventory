@@ -390,6 +390,26 @@ var uservendorschema = new mongoose2.Schema(
     primaryaddress: {
       type: String,
       required: true
+    },
+    contactPerson: {
+      type: String,
+      required: false
+    },
+    gst: {
+      type: String,
+      required: false
+    },
+    productType: {
+      type: String,
+      required: false
+    },
+    category: {
+      type: String,
+      required: false
+    },
+    status: {
+      type: String,
+      default: "Active"
     }
   },
   { timestamps: true }
@@ -399,7 +419,7 @@ var vendor_model_default = mongoose2.model("Vendor", uservendorschema);
 // src/controllers/vendor.controllers.ts
 var createVendor = async (req, res) => {
   try {
-    const { name, phone, secondphone, email, primaryaddress } = req.body;
+    const { name, phone, secondphone, email, primaryaddress, contactPerson, gst, productType, category, status } = req.body;
     const existingVendor = await vendor_model_default.findOne({ email });
     if (existingVendor) {
       return res.status(400).json({
@@ -410,9 +430,14 @@ var createVendor = async (req, res) => {
     const vendor = await vendor_model_default.create({
       name,
       phone,
-      secondphone,
+      secondphone: secondphone || phone,
       email,
-      primaryaddress
+      primaryaddress,
+      contactPerson,
+      gst,
+      productType,
+      category,
+      status: status || "Active"
     });
     res.status(201).json({
       success: true,
@@ -455,10 +480,10 @@ var getVendorById = async (req, res) => {
 var updateVendor = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, phone, secondphone, email, primaryaddress } = req.body;
+    const { name, phone, secondphone, email, primaryaddress, contactPerson, gst, productType, category, status } = req.body;
     const updatedVendor = await vendor_model_default.findByIdAndUpdate(
       id,
-      { name, phone, secondphone, email, primaryaddress },
+      { name, phone, secondphone: secondphone || phone, email, primaryaddress, contactPerson, gst, productType, category, status },
       { new: true }
     );
     if (!updatedVendor) {
@@ -1513,6 +1538,24 @@ var purchaseRequestSchema = new mongoose2.Schema(
     approvedBy: {
       type: String,
       default: ""
+    },
+    deliveryAddress: {
+      type: String,
+      default: ""
+    },
+    notes: {
+      type: String,
+      default: ""
+    },
+    priority: {
+      type: String,
+      enum: ["Low", "Medium", "High"],
+      default: "Medium"
+    },
+    deliveryStatus: {
+      type: String,
+      enum: ["Pending", "Processing", "Delivered"],
+      default: "Pending"
     }
   },
   { timestamps: true }
@@ -1522,7 +1565,7 @@ var purchaseRequest_model_default = mongoose2.model("PurchaseRequest", purchaseR
 // src/controllers/purchaseRequest.controller.ts
 var createPurchaseRequest = async (req, res) => {
   try {
-    const { department, vendor, products, requestedBy } = req.body;
+    const { department, vendor, products, requestedBy, deliveryAddress, notes, priority } = req.body;
     if (!department || !vendor || !products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ success: false, message: "Department, vendor, and products are required." });
     }
@@ -1537,29 +1580,33 @@ var createPurchaseRequest = async (req, res) => {
       products,
       totalAmount,
       requestedBy: requestedBy || "Admin",
-      status: "Pending"
+      status: "Pending",
+      deliveryAddress: deliveryAddress || "",
+      notes: notes || "",
+      priority: priority || "Medium",
+      deliveryStatus: "Pending"
     });
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: "Purchase request created successfully",
       data: newRequest
     });
   } catch (error) {
     console.error("CREATE PURCHASE REQUEST ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error creating purchase request",
       error: error.message
     });
   }
 };
-var getAllPurchaseRequests = async (req, res) => {
+var getAllPurchaseRequests = async (_req, res) => {
   try {
     const requests = await purchaseRequest_model_default.find().sort({ createdAt: -1 });
-    res.status(200).json(requests);
+    return res.status(200).json(requests);
   } catch (error) {
     console.error("GET PURCHASE REQUESTS ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error fetching purchase requests",
       error: error.message
@@ -1569,26 +1616,34 @@ var getAllPurchaseRequests = async (req, res) => {
 var updatePurchaseRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, approvedBy } = req.body;
-    if (!status) {
-      return res.status(400).json({ success: false, message: "Status is required." });
+    const { status, approvedBy, deliveryStatus } = req.body;
+    if (!status && !deliveryStatus) {
+      return res.status(400).json({ success: false, message: "Status or Delivery Status is required." });
+    }
+    const updateData = {};
+    if (status !== void 0) {
+      updateData.status = status;
+      updateData.approvedBy = approvedBy || "Admin";
+    }
+    if (deliveryStatus !== void 0) {
+      updateData.deliveryStatus = deliveryStatus;
     }
     const updatedRequest = await purchaseRequest_model_default.findByIdAndUpdate(
       id,
-      { status, approvedBy: approvedBy || "Admin" },
+      updateData,
       { new: true }
     );
     if (!updatedRequest) {
       return res.status(404).json({ success: false, message: "Purchase request not found." });
     }
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: `Purchase request status updated to ${status} successfully.`,
+      message: `Purchase request status updated successfully.`,
       data: updatedRequest
     });
   } catch (error) {
     console.error("UPDATE PURCHASE REQUEST STATUS ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error updating purchase request status",
       error: error.message
@@ -1602,13 +1657,13 @@ var deletePurchaseRequest = async (req, res) => {
     if (!deletedRequest) {
       return res.status(404).json({ success: false, message: "Purchase request not found." });
     }
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Purchase request deleted successfully."
     });
   } catch (error) {
     console.error("DELETE PURCHASE REQUEST ERROR:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error deleting purchase request",
       error: error.message
