@@ -1377,11 +1377,16 @@ var invitationSchema = new mongoose2.Schema({
 });
 var invitation_model_default = mongoose2.model("Invitation", invitationSchema);
 dotenv.config();
+var getMailerPass = () => {
+  const pass = process.env.NODE_MAILER_PASS || process.env.EMAIL_PASS || "";
+  return pass.replace(/^["']|["']$/g, "");
+};
+var mailerEmail = process.env.NODE_MAILER_EMAIL || process.env.EMAIL_USER || "test@example.com";
 var transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.EMAIL_USER || "test@example.com",
-    pass: process.env.EMAIL_PASS || "password"
+    user: mailerEmail,
+    pass: getMailerPass() || "password"
   }
 });
 var sendInvite = async (req, res) => {
@@ -1405,20 +1410,36 @@ var sendInvite = async (req, res) => {
       expiresAt
     });
     await newInvitation.save();
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const inviteLink = `${frontendUrl}/set-password?token=${token}`;
+    const frontendUrl = process.env.CLIENT_URL || process.env.FRONTEND_URL || "http://localhost:5173";
+    const inviteLink = `${frontendUrl}/set-password/${token}`;
     const mailOptions = {
-      from: process.env.EMAIL_USER || "test@example.com",
+      from: mailerEmail,
       to: email,
-      subject: "You've been invited to join the Company",
+      subject: "Complete Your Account Setup",
       html: `
-        <h2>Welcome aboard! Your account is ready.</h2>
-        <p>Click the button below to set your password and get started. This link expires in 24 hours.</p>
-        <a href="${inviteLink}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Set My Password &rarr;</a>
-        <br><br>
-        <p>If the button doesn't work, copy and paste this link into your browser:</p>
-        <p>${inviteLink}</p>
-        <p>If you didn't expect this email, you can safely ignore it.</p>
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 20px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <div style="width: 48px; height: 48px; line-height: 48px; background-color: #ecfdf5; color: #10b981; border-radius: 12px; display: inline-block; font-size: 24px; font-weight: bold; margin-bottom: 12px;">\u2713</div>
+          </div>
+          <h2 style="color: #0f172a; font-size: 22px; font-weight: 700; text-align: center; margin: 0 0 12px 0;">Welcome to Our Company</h2>
+          <p style="color: #475569; font-size: 15px; line-height: 1.6; text-align: center; margin: 0 0 24px 0;">
+            Your employee account has been created successfully.
+          </p>
+          <p style="color: #475569; font-size: 15px; line-height: 1.6; text-align: center; margin: 0 0 32px 0;">
+            Please click the button below to set your password and activate your account.
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${inviteLink}" style="background-color: #10b981; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 15px; display: inline-block; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25); transition: all 0.2s ease-in-out;">
+              Set Password
+            </a>
+          </div>
+          <p style="color: #94a3b8; font-size: 13px; text-align: center; margin: 32px 0 16px 0; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+            This link will expire in 24 hours.
+          </p>
+          <p style="color: #475569; font-size: 14px; text-align: center; font-weight: 500; margin: 0;">
+            Thank You
+          </p>
+        </div>
       `
     };
     try {
@@ -1427,15 +1448,12 @@ var sendInvite = async (req, res) => {
       console.warn("Failed to send email (check NodeMailer config):", mailError);
     }
     console.log("\n=======================================================");
-    console.log("INVITATION LINK GENERATED (Copy and paste into browser):");
+    console.log("INVITATION LINK GENERATED (Sent via Email):");
     console.log(inviteLink);
     console.log("=======================================================\n");
     res.status(200).json({
       success: true,
-      message: `Invite sent to ${email}`,
-      // Always returning the token and link so you can easily test it on the frontend!
-      token,
-      link: inviteLink
+      message: "Employee registration successful. Password setup email has been sent."
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
