@@ -882,30 +882,109 @@ var userSchema = new mongoose2.Schema({
   }
 });
 var User_default = mongoose2.model("User", userSchema);
+var employeeSchema = new mongoose2.Schema(
+  {
+    employeeId: {
+      type: String,
+      unique: true,
+      required: true
+    },
+    name: {
+      type: String,
+      required: true
+    },
+    mobile: {
+      type: String,
+      required: true
+    },
+    blood: {
+      type: String,
+      required: true
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true
+    },
+    department: {
+      type: String,
+      required: true
+    },
+    role: {
+      type: String,
+      required: true
+    },
+    password: {
+      type: String,
+      required: true
+    },
+    isVerified: {
+      type: Boolean,
+      default: false
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+var employee_model_default = mongoose2.model("Employee", employeeSchema);
 var loginController = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User_default.findOne({ email });
-    if (!user) {
+    if (!email || !password) {
       return res.status(400).json({
-        message: "User not found"
+        message: "Email and password are required"
       });
     }
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    let user = await User_default.findOne({ email });
+    let role = "";
+    let name = "";
+    let hashedPassword = "";
+    let userId = "";
+    let department = "";
+    if (user && user.role === "admin") {
+      role = "admin";
+      name = "Admin User";
+      hashedPassword = user.password;
+      userId = user._id.toString();
+      department = "Administration";
+    } else {
+      const employee = await employee_model_default.findOne({ email });
+      if (employee) {
+        if (!employee.isVerified) {
+          return res.status(400).json({
+            message: "Employee account is not activated. Please set your password first."
+          });
+        }
+        role = employee.role || "employee";
+        name = employee.name || "Employee";
+        hashedPassword = employee.password;
+        userId = employee._id.toString();
+        department = employee.department || "Operations";
+      } else if (user) {
+        role = user.role || "employee";
+        name = "User";
+        hashedPassword = user.password;
+        userId = user._id.toString();
+        department = "Operations";
+      } else {
+        return res.status(400).json({
+          message: "User not found"
+        });
+      }
+    }
+    const isMatch = await bcrypt.compare(password, hashedPassword);
     if (!isMatch) {
       return res.status(400).json({
-        message: "Invalid password"
+        message: "Invalid login credentials"
       });
     }
     const token = jwt.sign(
       {
-        id: user._id,
-        role: user.role
+        id: userId,
+        role
       },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || "mySuperSecretKey123",
       {
         expiresIn: "1d"
       }
@@ -913,7 +992,12 @@ var loginController = async (req, res) => {
     res.status(200).json({
       message: "Login Success",
       token,
-      role: user.role
+      user: {
+        name,
+        email,
+        role,
+        department
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -1195,52 +1279,6 @@ var productmenu_routes_default = router4;
 var router5 = express8.Router();
 router5.post("/login", loginController);
 var authRoutes_default = router5;
-var employeeSchema = new mongoose2.Schema(
-  {
-    employeeId: {
-      type: String,
-      unique: true,
-      required: true
-    },
-    name: {
-      type: String,
-      required: true
-    },
-    mobile: {
-      type: String,
-      required: true
-    },
-    blood: {
-      type: String,
-      required: true
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true
-    },
-    department: {
-      type: String,
-      required: true
-    },
-    role: {
-      type: String,
-      required: true
-    },
-    password: {
-      type: String,
-      required: true
-    },
-    isVerified: {
-      type: Boolean,
-      default: false
-    }
-  },
-  {
-    timestamps: true
-  }
-);
-var employee_model_default = mongoose2.model("Employee", employeeSchema);
 dotenv.config();
 var sendOtpEmail = async (email, otp) => {
   try {
@@ -1265,8 +1303,6 @@ var sendOtpEmail = async (email, otp) => {
   }
 };
 var sendOtp_default = sendOtpEmail;
-
-// src/controllers/employeeController.ts
 var createEmployee = async (req, res) => {
   try {
     const {
@@ -1288,6 +1324,7 @@ var createEmployee = async (req, res) => {
     const otp = String(
       Math.floor(1e5 + Math.random() * 9e5)
     );
+    const hashedPassword = await bcrypt.hash("admin@123", 12);
     const newEmployee = new employee_model_default({
       employeeId,
       name,
@@ -1297,8 +1334,8 @@ var createEmployee = async (req, res) => {
       department,
       role,
       otp,
-      password: "admin@123",
-      //same password
+      password: hashedPassword,
+      // hashed password
       isVerified: false
     });
     await newEmployee.save();

@@ -1,5 +1,6 @@
 import Employee from "../models/employee.model.js";
 import sendOtpEmail from "../utils/sendOtp.js";
+import bcrypt from "bcryptjs";
 export const createEmployee = async (req, res) => {
   try {
     const {
@@ -28,19 +29,20 @@ export const createEmployee = async (req, res) => {
 const otp = String(
   Math.floor(100000 + Math.random() * 900000)
 );
+    const hashedPassword = await bcrypt.hash("admin@123", 12);
     // create employee
-   const newEmployee = new Employee({
-  employeeId,
-  name,
-  mobile,
-  blood,
-  email,
-  department,
-  role,
-  otp,
-  password:"admin@123",  //same password
-  isVerified: false
-});
+    const newEmployee = new Employee({
+      employeeId,
+      name,
+      mobile,
+      blood,
+      email,
+      department,
+      role,
+      otp,
+      password: hashedPassword,  // hashed password
+      isVerified: false
+    });
 
     await newEmployee.save();
   await sendOtpEmail(email, otp);
