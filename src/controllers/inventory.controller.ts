@@ -8,7 +8,9 @@ const getStockStatus = (quantity: number): "In Stock" | "Low Stock" | "Out of St
   return "In Stock";
 };
 
+// ======================
 // CREATE
+// ======================
 export const createInventoryItem = async (req: Request, res: Response) => {
   try {
     const { itemName, category, stockQuantity, price, warehouse, supplier } = req.body;
@@ -36,31 +38,102 @@ export const createInventoryItem = async (req: Request, res: Response) => {
       data: newItem,
     });
   } catch (error: any) {
-    console.error("CREATE INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error adding inventory item",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error adding inventory item", error: error.message });
   }
 };
 
+// ======================
 // GET ALL
+// ======================
 export const getAllInventoryItems = async (req: Request, res: Response) => {
   try {
     const items = await Inventory.find().sort({ createdAt: -1 });
     res.status(200).json(items);
   } catch (error: any) {
-    console.error("GET INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching inventory items",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error fetching inventory items", error: error.message });
   }
 };
 
-// UPDATE (Stock level & info updates)
+// ======================
+// CHECK STOCK BY ITEM NAME
+// Returns the matching inventory item for a given product name
+// ======================
+export const checkStock = async (req: Request, res: Response) => {
+  try {
+    const { itemName } = req.params;
+
+    // Case-insensitive search for item name
+    const item = await Inventory.findOne({
+      itemName: { $regex: new RegExp(`^${itemName}$`, "i") },
+    });
+
+    if (!item) {
+      return res.status(200).json({
+        success: true,
+        found: false,
+        stock: 0,
+        message: "Item not found in inventory",
+        data: null,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      found: true,
+      stock: item.stockQuantity,
+      itemName: item.itemName,
+      status: item.status,
+      data: item,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: "Error checking stock", error: error.message });
+  }
+};
+
+// ======================
+// DEDUCT STOCK
+// Reduces stockQuantity by the given quantity amount
+// ======================
+export const deductStock = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { quantity } = req.body;
+
+    const deductQty = Number(quantity);
+    if (!deductQty || deductQty <= 0) {
+      return res.status(400).json({ success: false, message: "Valid quantity required for deduction" });
+    }
+
+    const item = await Inventory.findById(id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: "Inventory item not found" });
+    }
+
+    if (item.stockQuantity < deductQty) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient stock to deduct",
+        available: item.stockQuantity,
+      });
+    }
+
+    item.stockQuantity -= deductQty;
+    item.status = getStockStatus(item.stockQuantity);
+    await item.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Stock deducted by ${deductQty}. Remaining: ${item.stockQuantity}`,
+      data: item,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: "Error deducting stock", error: error.message });
+  }
+};
+
+// ======================
+// UPDATE
+// ======================
 export const updateInventoryItem = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -71,7 +144,6 @@ export const updateInventoryItem = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Inventory item not found." });
     }
 
-    // Capture updated fields
     if (itemName !== undefined) item.itemName = itemName;
     if (category !== undefined) item.category = category;
     if (price !== undefined) item.price = Number(price) || 0;
@@ -86,22 +158,15 @@ export const updateInventoryItem = async (req: Request, res: Response) => {
 
     await item.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Inventory item updated successfully",
-      data: item,
-    });
+    res.status(200).json({ success: true, message: "Inventory item updated successfully", data: item });
   } catch (error: any) {
-    console.error("UPDATE INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating inventory item",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error updating inventory item", error: error.message });
   }
 };
 
+// ======================
 // DELETE
+// ======================
 export const deleteInventoryItem = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -111,16 +176,8 @@ export const deleteInventoryItem = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Inventory item not found." });
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Inventory item deleted successfully.",
-    });
+    res.status(200).json({ success: true, message: "Inventory item deleted successfully." });
   } catch (error: any) {
-    console.error("DELETE INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error deleting inventory item",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Error deleting inventory item", error: error.message });
   }
 };

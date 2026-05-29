@@ -34,10 +34,16 @@ const materialSchema = new mongoose.Schema(
       default: "Low",
     },
 
-    // ✅ ONLY THIS STATUS (FINAL)
+    // ✅ FINAL STATUS ENUM (includes approval workflow states)
     status: {
       type: String,
-      enum: ["Pending", "Approved", "Rejected"],
+      enum: [
+        "Pending",
+        "Approved",
+        "Rejected",
+        "Completed",
+        "Procurement Required",
+      ],
       default: "Pending",
     },
   },

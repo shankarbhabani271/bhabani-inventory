@@ -15,7 +15,6 @@ export const createMaterial = async (req, res) => {
       priority,
     } = req.body;
 
-    // ✅ validation
     if (!referenceId || !date || !requester || !department || !productDetails || !quantity) {
       return res.status(400).json({
         success: false,
@@ -31,7 +30,6 @@ export const createMaterial = async (req, res) => {
       });
     }
 
-    // ✅ duplicate check
     const existing = await Material.findOne({ referenceId });
     if (existing) {
       return res.status(400).json({
@@ -40,7 +38,6 @@ export const createMaterial = async (req, res) => {
       });
     }
 
-    // ✅ create
     const material = new Material({
       referenceId,
       date,
@@ -74,7 +71,7 @@ export const getMaterials = async (req, res) => {
   try {
     const { status, search } = req.query;
 
-    let filter = {};
+    let filter: any = {};
 
     if (status) {
       filter.status = status;
@@ -103,9 +100,8 @@ export const getMaterials = async (req, res) => {
 };
 
 // ======================
-// GET SINGLE MATERIAL
+// APPROVE
 // ======================
-// ✅ APPROVE
 export const approveMaterial = async (req, res) => {
   try {
     const updated = await Material.findByIdAndUpdate(
@@ -115,27 +111,18 @@ export const approveMaterial = async (req, res) => {
     );
 
     if (!updated) {
-      return res.status(404).json({
-        success: false,
-        message: "Material not found",
-      });
+      return res.status(404).json({ success: false, message: "Material not found" });
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Material Approved",
-      data: updated,
-    });
+    res.status(200).json({ success: true, message: "Material Approved", data: updated });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-// ✅ REJECT
+// ======================
+// REJECT
+// ======================
 export const rejectMaterial = async (req, res) => {
   try {
     const updated = await Material.findByIdAndUpdate(
@@ -145,21 +132,57 @@ export const rejectMaterial = async (req, res) => {
     );
 
     if (!updated) {
-      return res.status(404).json({
-        success: false,
-        message: "Material not found",
-      });
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+
+    res.status(200).json({ success: true, message: "Material Rejected", data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ======================
+// COMPLETE (Stock was available, stock deducted)
+// ======================
+export const completeMaterial = async (req, res) => {
+  try {
+    const updated = await Material.findByIdAndUpdate(
+      req.params.id,
+      { status: "Completed" },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+
+    res.status(200).json({ success: true, message: "Material marked as Completed", data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ======================
+// PROCUREMENT REQUIRED (Stock not available)
+// ======================
+export const procurementRequired = async (req, res) => {
+  try {
+    const updated = await Material.findByIdAndUpdate(
+      req.params.id,
+      { status: "Procurement Required" },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
     }
 
     res.status(200).json({
       success: true,
-      message: "Material Rejected",
+      message: "Status updated to Procurement Required",
       data: updated,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };

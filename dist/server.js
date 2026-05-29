@@ -1047,10 +1047,16 @@ var materialSchema = new mongoose2.Schema(
       enum: ["Low", "Medium", "High", "Urgent"],
       default: "Low"
     },
-    // ✅ ONLY THIS STATUS (FINAL)
+    // ✅ FINAL STATUS ENUM (includes approval workflow states)
     status: {
       type: String,
-      enum: ["Pending", "Approved", "Rejected"],
+      enum: [
+        "Pending",
+        "Approved",
+        "Rejected",
+        "Completed",
+        "Procurement Required"
+      ],
       default: "Pending"
     }
   },
@@ -1147,21 +1153,11 @@ var approveMaterial = async (req, res) => {
       { new: true }
     );
     if (!updated) {
-      return res.status(404).json({
-        success: false,
-        message: "Material not found"
-      });
+      return res.status(404).json({ success: false, message: "Material not found" });
     }
-    res.status(200).json({
-      success: true,
-      message: "Material Approved",
-      data: updated
-    });
+    res.status(200).json({ success: true, message: "Material Approved", data: updated });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 var rejectMaterial = async (req, res) => {
@@ -1172,21 +1168,45 @@ var rejectMaterial = async (req, res) => {
       { new: true }
     );
     if (!updated) {
-      return res.status(404).json({
-        success: false,
-        message: "Material not found"
-      });
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+    res.status(200).json({ success: true, message: "Material Rejected", data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+var completeMaterial = async (req, res) => {
+  try {
+    const updated = await material_model_default.findByIdAndUpdate(
+      req.params.id,
+      { status: "Completed" },
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+    res.status(200).json({ success: true, message: "Material marked as Completed", data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+var procurementRequired = async (req, res) => {
+  try {
+    const updated = await material_model_default.findByIdAndUpdate(
+      req.params.id,
+      { status: "Procurement Required" },
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
     }
     res.status(200).json({
       success: true,
-      message: "Material Rejected",
+      message: "Status updated to Procurement Required",
       data: updated
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -1196,6 +1216,8 @@ router3.post("/", createMaterial);
 router3.get("/", getMaterials);
 router3.put("/:id/approve", approveMaterial);
 router3.put("/:id/reject", rejectMaterial);
+router3.put("/:id/complete", completeMaterial);
+router3.put("/:id/procurement-required", procurementRequired);
 var material_routes_default = router3;
 var productMenuSchema = new Schema(
   {
@@ -1803,12 +1825,7 @@ var createInventoryItem = async (req, res) => {
       data: newItem
     });
   } catch (error) {
-    console.error("CREATE INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error adding inventory item",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Error adding inventory item", error: error.message });
   }
 };
 var getAllInventoryItems = async (req, res) => {
@@ -1816,12 +1833,65 @@ var getAllInventoryItems = async (req, res) => {
     const items = await inventory_model_default.find().sort({ createdAt: -1 });
     res.status(200).json(items);
   } catch (error) {
-    console.error("GET INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching inventory items",
-      error: error.message
+    res.status(500).json({ success: false, message: "Error fetching inventory items", error: error.message });
+  }
+};
+var checkStock = async (req, res) => {
+  try {
+    const { itemName } = req.params;
+    const item = await inventory_model_default.findOne({
+      itemName: { $regex: new RegExp(`^${itemName}$`, "i") }
     });
+    if (!item) {
+      return res.status(200).json({
+        success: true,
+        found: false,
+        stock: 0,
+        message: "Item not found in inventory",
+        data: null
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      found: true,
+      stock: item.stockQuantity,
+      itemName: item.itemName,
+      status: item.status,
+      data: item
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error checking stock", error: error.message });
+  }
+};
+var deductStock = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantity } = req.body;
+    const deductQty = Number(quantity);
+    if (!deductQty || deductQty <= 0) {
+      return res.status(400).json({ success: false, message: "Valid quantity required for deduction" });
+    }
+    const item = await inventory_model_default.findById(id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: "Inventory item not found" });
+    }
+    if (item.stockQuantity < deductQty) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient stock to deduct",
+        available: item.stockQuantity
+      });
+    }
+    item.stockQuantity -= deductQty;
+    item.status = getStockStatus(item.stockQuantity);
+    await item.save();
+    res.status(200).json({
+      success: true,
+      message: `Stock deducted by ${deductQty}. Remaining: ${item.stockQuantity}`,
+      data: item
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error deducting stock", error: error.message });
   }
 };
 var updateInventoryItem = async (req, res) => {
@@ -1843,18 +1913,9 @@ var updateInventoryItem = async (req, res) => {
       item.status = getStockStatus(qty);
     }
     await item.save();
-    res.status(200).json({
-      success: true,
-      message: "Inventory item updated successfully",
-      data: item
-    });
+    res.status(200).json({ success: true, message: "Inventory item updated successfully", data: item });
   } catch (error) {
-    console.error("UPDATE INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error updating inventory item",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Error updating inventory item", error: error.message });
   }
 };
 var deleteInventoryItem = async (req, res) => {
@@ -1864,17 +1925,9 @@ var deleteInventoryItem = async (req, res) => {
     if (!deletedItem) {
       return res.status(404).json({ success: false, message: "Inventory item not found." });
     }
-    res.status(200).json({
-      success: true,
-      message: "Inventory item deleted successfully."
-    });
+    res.status(200).json({ success: true, message: "Inventory item deleted successfully." });
   } catch (error) {
-    console.error("DELETE INVENTORY ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error deleting inventory item",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Error deleting inventory item", error: error.message });
   }
 };
 
@@ -1882,6 +1935,8 @@ var deleteInventoryItem = async (req, res) => {
 var router8 = express8.Router();
 router8.post("/create", createInventoryItem);
 router8.get("/get", getAllInventoryItems);
+router8.get("/check-stock/:itemName", checkStock);
+router8.put("/deduct-stock/:id", deductStock);
 router8.put("/:id", updateInventoryItem);
 router8.delete("/:id", deleteInventoryItem);
 var inventory_routes_default = router8;
