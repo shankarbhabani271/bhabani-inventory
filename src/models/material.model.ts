@@ -43,6 +43,8 @@ const materialSchema = new mongoose.Schema(
         "Rejected",
         "Completed",
         "Procurement Required",
+        "PO Created",
+        "Procurement Completed"
       ],
       default: "Pending",
     },

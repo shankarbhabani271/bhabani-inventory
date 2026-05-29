@@ -45,6 +45,10 @@ const purchaseRequestSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    materialRequestId: {
+      type: String,
+      default: "",
+    },
     priority: {
       type: String,
       enum: ["Low", "Medium", "High"],

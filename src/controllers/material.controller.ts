@@ -186,3 +186,28 @@ export const procurementRequired = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ======================
+// DELETE
+// ======================
+export const deleteMaterial = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await Material.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Material request not found" });
+    }
+    
+    // Also delete any associated purchase request
+    try {
+      const PurchaseRequest = (await import("../models/purchaseRequest.model.js")).default;
+      await PurchaseRequest.deleteMany({ materialRequestId: id });
+    } catch (prErr: any) {
+      console.warn("Failed to delete associated purchase requests:", prErr.message);
+    }
+
+    res.status(200).json({ success: true, message: "Material request and associated procurement records permanently deleted" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

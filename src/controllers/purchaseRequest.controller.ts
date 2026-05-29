@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import PurchaseRequest from "../models/purchaseRequest.model.js";
+import Material from "../models/material.model.js";
 
 // CREATE
 export const createPurchaseRequest = async (req: Request, res: Response) => {
@@ -27,7 +28,8 @@ export const createPurchaseRequest = async (req: Request, res: Response) => {
       deliveryAddress: deliveryAddress || "",
       notes: notes || "",
       priority: priority || "Medium",
-      deliveryStatus: "Pending"
+      deliveryStatus: "Pending",
+      materialRequestId: req.body.materialRequestId || ""
     });
 
     return res.status(201).json({
@@ -87,6 +89,17 @@ export const updatePurchaseRequestStatus = async (req: Request, res: Response) =
 
     if (!updatedRequest) {
       return res.status(404).json({ success: false, message: "Purchase request not found." });
+    }
+
+    if (updatedRequest && updatedRequest.status === "Approved" && updatedRequest.materialRequestId) {
+      try {
+        await Material.findByIdAndUpdate(
+          updatedRequest.materialRequestId,
+          { status: "Procurement Completed" }
+        );
+      } catch (err) {
+        console.error("Failed to update Material Request status upon PO creation", err);
+      }
     }
 
     return res.status(200).json({

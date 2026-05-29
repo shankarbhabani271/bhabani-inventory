@@ -6,6 +6,7 @@ import {
   rejectMaterial,
   completeMaterial,
   procurementRequired,
+  deleteMaterial,
 } from "../controllers/material.controller.js";
 
 const router = express.Router();
@@ -16,5 +17,6 @@ router.put("/:id/approve", approveMaterial);
 router.put("/:id/reject", rejectMaterial);
 router.put("/:id/complete", completeMaterial);
 router.put("/:id/procurement-required", procurementRequired);
+router.delete("/:id", deleteMaterial);
 
 export default router;

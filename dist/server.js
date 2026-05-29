@@ -1,3 +1,4 @@
+import { purchaseRequest_model_default } from './chunk-VRZGGLIO.js';
 import cookieParser from 'cookie-parser';
 import express8, { Router } from 'express';
 import path from 'path';
@@ -18,7 +19,6 @@ import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 
-// src/server.ts
 var LOG_DIR = path.resolve(process.cwd(), "logs");
 if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -1055,7 +1055,9 @@ var materialSchema = new mongoose2.Schema(
         "Approved",
         "Rejected",
         "Completed",
-        "Procurement Required"
+        "Procurement Required",
+        "PO Created",
+        "Procurement Completed"
       ],
       default: "Pending"
     }
@@ -1209,6 +1211,24 @@ var procurementRequired = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+var deleteMaterial = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await material_model_default.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Material request not found" });
+    }
+    try {
+      const PurchaseRequest = (await import('./purchaseRequest.model-CX7SN3Y4.js')).default;
+      await PurchaseRequest.deleteMany({ materialRequestId: id });
+    } catch (prErr) {
+      console.warn("Failed to delete associated purchase requests:", prErr.message);
+    }
+    res.status(200).json({ success: true, message: "Material request and associated procurement records permanently deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 // src/routes/material.routes.ts
 var router3 = express8.Router();
@@ -1218,6 +1238,7 @@ router3.put("/:id/approve", approveMaterial);
 router3.put("/:id/reject", rejectMaterial);
 router3.put("/:id/complete", completeMaterial);
 router3.put("/:id/procurement-required", procurementRequired);
+router3.delete("/:id", deleteMaterial);
 var material_routes_default = router3;
 var productMenuSchema = new Schema(
   {
@@ -1579,65 +1600,6 @@ router6.get("/verify-token", verifyToken);
 router6.post("/set-password", setPassword);
 router6.post("/set-password/:token", setPassword);
 var employeeRoutes_default = router6;
-var purchaseRequestSchema = new mongoose2.Schema(
-  {
-    department: {
-      type: String,
-      required: true
-    },
-    vendor: {
-      type: String,
-      required: true
-    },
-    products: [
-      {
-        name: { type: String, required: true },
-        quantity: { type: Number, required: true, default: 1 },
-        price: { type: Number, required: true, default: 0 }
-      }
-    ],
-    totalAmount: {
-      type: Number,
-      required: true,
-      default: 0
-    },
-    status: {
-      type: String,
-      required: true,
-      enum: ["Pending", "Approved", "Rejected", "Completed"],
-      default: "Pending"
-    },
-    requestedBy: {
-      type: String,
-      required: true,
-      default: "Admin"
-    },
-    approvedBy: {
-      type: String,
-      default: ""
-    },
-    deliveryAddress: {
-      type: String,
-      default: ""
-    },
-    notes: {
-      type: String,
-      default: ""
-    },
-    priority: {
-      type: String,
-      enum: ["Low", "Medium", "High"],
-      default: "Medium"
-    },
-    deliveryStatus: {
-      type: String,
-      enum: ["Pending", "Processing", "Delivered"],
-      default: "Pending"
-    }
-  },
-  { timestamps: true }
-);
-var purchaseRequest_model_default = mongoose2.model("PurchaseRequest", purchaseRequestSchema);
 
 // src/controllers/purchaseRequest.controller.ts
 var createPurchaseRequest = async (req, res) => {
@@ -1661,7 +1623,8 @@ var createPurchaseRequest = async (req, res) => {
       deliveryAddress: deliveryAddress || "",
       notes: notes || "",
       priority: priority || "Medium",
-      deliveryStatus: "Pending"
+      deliveryStatus: "Pending",
+      materialRequestId: req.body.materialRequestId || ""
     });
     return res.status(201).json({
       success: true,
@@ -1712,6 +1675,16 @@ var updatePurchaseRequestStatus = async (req, res) => {
     );
     if (!updatedRequest) {
       return res.status(404).json({ success: false, message: "Purchase request not found." });
+    }
+    if (updatedRequest && updatedRequest.status === "Approved" && updatedRequest.materialRequestId) {
+      try {
+        await material_model_default.findByIdAndUpdate(
+          updatedRequest.materialRequestId,
+          { status: "Procurement Completed" }
+        );
+      } catch (err) {
+        console.error("Failed to update Material Request status upon PO creation", err);
+      }
     }
     return res.status(200).json({
       success: true,
