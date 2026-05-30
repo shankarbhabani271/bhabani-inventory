@@ -3,6 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import Invitation from "../models/invitation.model.js";
 import Employee from "../models/employee.model.js";
+import User from "../models/User.js";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
@@ -36,6 +37,12 @@ export const sendInvite = async (req: Request, res: Response) => {
     const existingEmployee = await Employee.findOne({ email });
     if (existingEmployee) {
       return res.status(400).json({ success: false, message: "Employee already exists with this email." });
+    }
+
+    // Check if admin user already exists (prevent email clashes)
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: "Admin User already exists with this email." });
     }
 
     // Generate token

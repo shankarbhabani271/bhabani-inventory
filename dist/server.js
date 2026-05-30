@@ -1479,6 +1479,10 @@ var sendInvite = async (req, res) => {
     if (existingEmployee) {
       return res.status(400).json({ success: false, message: "Employee already exists with this email." });
     }
+    const existingUser = await User_default.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: "Admin User already exists with this email." });
+    }
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
     await invitation_model_default.findOneAndDelete({ email });
