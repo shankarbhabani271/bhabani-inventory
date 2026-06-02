@@ -26,6 +26,10 @@ import authRoutes from "./routes/authRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
 import purchaseRequestRoutes from "./routes/purchaseRequest.routes.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
+import settingsRoutes from "./routes/settings.routes.js";
+import auditLogRoutes from "./routes/auditLog.routes.js";
+import procurementRoutes from "./routes/procurement.routes.js";
+import qcRoutes from "./routes/qc.routes.js";
 
 const publicDir = path.join(__dirname, "..", "public");
 app.use(express.static(publicDir));
@@ -65,6 +69,10 @@ app.use("/api/purchase-request", purchaseRequestRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/productmenu", productMenuRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/audit-log", auditLogRoutes);
+app.use("/api/procurement", procurementRoutes);
+app.use("/api/qc", qcRoutes);
 
 
 

@@ -1,6 +1,6 @@
-import { purchaseRequest_model_default } from './chunk-VRZGGLIO.js';
+import { purchaseRequest_model_default } from './chunk-3XMI2BOX.js';
 import cookieParser from 'cookie-parser';
-import express8, { Router } from 'express';
+import express12, { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import morgan from 'morgan';
@@ -145,7 +145,7 @@ var getUserDetails = async (req, res) => {
 };
 
 // src/routes/userdetails.routes.ts
-var router = express8.Router();
+var router = express12.Router();
 router.post("/userdetails", createUserDetails);
 router.get("/userdetails", getUserDetails);
 var userdetails_routes_default = router;
@@ -517,7 +517,7 @@ var deleteVendor = async (req, res) => {
 };
 
 // src/routes/vendor.routes.ts
-var router2 = express8.Router();
+var router2 = express12.Router();
 router2.post("/create", createVendor);
 router2.get("/get", getVendor);
 router2.get("/:id", getVendorById);
@@ -1047,20 +1047,35 @@ var materialSchema = new mongoose2.Schema(
       enum: ["Low", "Medium", "High", "Urgent"],
       default: "Low"
     },
-    // ✅ FINAL STATUS ENUM (includes approval workflow states)
+    // ✅ FULL PROCUREMENT LIFECYCLE STATUS ENUM
     status: {
       type: String,
       enum: [
         "Pending",
         "Approved",
+        "Ready For Issue",
         "Rejected",
         "Completed",
         "Procurement Required",
+        "RFQ Created",
+        "Quotations Received",
+        "Vendor Selected",
         "PO Created",
+        "PO Approved",
+        "GRN Created",
+        "Inventory Updated",
+        "Stock Issued",
         "Procurement Completed"
       ],
       default: "Pending"
-    }
+    },
+    // ✅ Procurement Reference Links
+    linkedPrId: { type: String, default: "" },
+    linkedRfqId: { type: String, default: "" },
+    linkedPoId: { type: String, default: "" },
+    linkedGrnId: { type: String, default: "" },
+    issuedQty: { type: Number, default: 0 },
+    stockAvailableAtApproval: { type: Number, default: 0 }
   },
   { timestamps: true }
 );
@@ -1211,6 +1226,45 @@ var procurementRequired = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+var poCreated = async (req, res) => {
+  try {
+    const updated = await material_model_default.findByIdAndUpdate(
+      req.params.id,
+      { status: "PO Created" },
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+    res.status(200).json({
+      success: true,
+      message: "Status updated to PO Created",
+      data: updated
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+var updateStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const updated = await material_model_default.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+    res.status(200).json({
+      success: true,
+      message: `Status updated to ${status}`,
+      data: updated
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 var deleteMaterial = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1219,7 +1273,7 @@ var deleteMaterial = async (req, res) => {
       return res.status(404).json({ success: false, message: "Material request not found" });
     }
     try {
-      const PurchaseRequest = (await import('./purchaseRequest.model-CX7SN3Y4.js')).default;
+      const PurchaseRequest = (await import('./purchaseRequest.model-X7GWMKTQ.js')).default;
       await PurchaseRequest.deleteMany({ materialRequestId: id });
     } catch (prErr) {
       console.warn("Failed to delete associated purchase requests:", prErr.message);
@@ -1231,13 +1285,15 @@ var deleteMaterial = async (req, res) => {
 };
 
 // src/routes/material.routes.ts
-var router3 = express8.Router();
+var router3 = express12.Router();
 router3.post("/", createMaterial);
 router3.get("/", getMaterials);
 router3.put("/:id/approve", approveMaterial);
 router3.put("/:id/reject", rejectMaterial);
 router3.put("/:id/complete", completeMaterial);
 router3.put("/:id/procurement-required", procurementRequired);
+router3.put("/:id/po-created", poCreated);
+router3.put("/:id/status", updateStatus);
 router3.delete("/:id", deleteMaterial);
 var material_routes_default = router3;
 var productMenuSchema = new Schema(
@@ -1319,7 +1375,7 @@ router4.get("/:id", getSingleProductMenu);
 router4.put("/:id", updateProductMenu);
 router4.delete("/:id", deleteProductMenu);
 var productmenu_routes_default = router4;
-var router5 = express8.Router();
+var router5 = express12.Router();
 router5.post("/login", loginController);
 var authRoutes_default = router5;
 dotenv.config();
@@ -1596,7 +1652,7 @@ var setPassword = async (req, res) => {
 };
 
 // src/routes/employeeRoutes.ts
-var router6 = express8.Router();
+var router6 = express12.Router();
 router6.post("/register", createEmployee);
 router6.post("/verify-otp", verifyEmployeeOtp);
 router6.post("/send-invite", sendInvite);
@@ -1604,6 +1660,36 @@ router6.get("/verify-token", verifyToken);
 router6.post("/set-password", setPassword);
 router6.post("/set-password/:token", setPassword);
 var employeeRoutes_default = router6;
+var counterSchema = new mongoose2.Schema(
+  {
+    prefix: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    year: {
+      type: Number,
+      required: true
+    },
+    seq: {
+      type: Number,
+      default: 0
+    }
+  },
+  { timestamps: true }
+);
+counterSchema.index({ prefix: 1, year: 1 }, { unique: true });
+var Counter = mongoose2.model("Counter", counterSchema);
+var generateSerialId = async (prefix) => {
+  const year = (/* @__PURE__ */ new Date()).getFullYear();
+  const counter = await Counter.findOneAndUpdate(
+    { prefix, year },
+    { $inc: { seq: 1 } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+  const seq = counter?.seq ?? 1;
+  return `${prefix}-${year}-${String(seq).padStart(3, "0")}`;
+};
 
 // src/controllers/purchaseRequest.controller.ts
 var createPurchaseRequest = async (req, res) => {
@@ -1612,12 +1698,14 @@ var createPurchaseRequest = async (req, res) => {
     if (!department || !vendor || !products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({ success: false, message: "Department, vendor, and products are required." });
     }
+    const requestId = await generateSerialId("PR");
     const totalAmount = products.reduce((acc, prod) => {
       const qty = Number(prod.quantity) || 0;
       const prc = Number(prod.price) || 0;
       return acc + qty * prc;
     }, 0);
     const newRequest = await purchaseRequest_model_default.create({
+      requestId,
       department,
       vendor,
       products,
@@ -1653,6 +1741,38 @@ var getAllPurchaseRequests = async (_req, res) => {
     return res.status(500).json({
       success: false,
       message: "Error fetching purchase requests",
+      error: error.message
+    });
+  }
+};
+var updatePurchaseRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { vendor, products, totalAmount, priority, deliveryAddress, notes, status, deliveryStatus, approvedBy } = req.body;
+    const updateData = {};
+    if (vendor !== void 0) updateData.vendor = vendor;
+    if (products !== void 0) updateData.products = products;
+    if (totalAmount !== void 0) updateData.totalAmount = totalAmount;
+    if (priority !== void 0) updateData.priority = priority;
+    if (deliveryAddress !== void 0) updateData.deliveryAddress = deliveryAddress;
+    if (notes !== void 0) updateData.notes = notes;
+    if (status !== void 0) updateData.status = status;
+    if (deliveryStatus !== void 0) updateData.deliveryStatus = deliveryStatus;
+    if (approvedBy !== void 0) updateData.approvedBy = approvedBy;
+    const updated = await purchaseRequest_model_default.findByIdAndUpdate(id, updateData, { new: true });
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Purchase request not found." });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Purchase request updated successfully.",
+      data: updated
+    });
+  } catch (error) {
+    console.error("UPDATE PURCHASE REQUEST ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating purchase request",
       error: error.message
     });
   }
@@ -1726,9 +1846,10 @@ var deletePurchaseRequest = async (req, res) => {
 };
 
 // src/routes/purchaseRequest.routes.ts
-var router7 = express8.Router();
+var router7 = express12.Router();
 router7.post("/create", createPurchaseRequest);
 router7.get("/get", getAllPurchaseRequests);
+router7.put("/:id", updatePurchaseRequest);
 router7.put("/status/:id", updatePurchaseRequestStatus);
 router7.delete("/:id", deletePurchaseRequest);
 var purchaseRequest_routes_default = router7;
@@ -1816,10 +1937,25 @@ var getAllInventoryItems = async (req, res) => {
 var checkStock = async (req, res) => {
   try {
     const { itemName } = req.params;
-    const item = await inventory_model_default.findOne({
-      itemName: { $regex: new RegExp(`^${itemName}$`, "i") }
+    const trimmedName = (itemName || "").trim();
+    let item = await ProductMenu.findOne({
+      name: { $regex: new RegExp(`^\\s*${trimmedName}\\s*$`, "i") }
     });
-    if (!item) {
+    if (item) {
+      return res.status(200).json({
+        success: true,
+        found: true,
+        stock: item.stock ?? 0,
+        itemName: item.name,
+        status: (item.stock ?? 0) > 0 ? "In Stock" : "Out of Stock",
+        data: item,
+        source: "ProductMenu"
+      });
+    }
+    const invItem = await inventory_model_default.findOne({
+      itemName: { $regex: new RegExp(`^\\s*${trimmedName}\\s*$`, "i") }
+    });
+    if (!invItem) {
       return res.status(200).json({
         success: true,
         found: false,
@@ -1831,10 +1967,11 @@ var checkStock = async (req, res) => {
     return res.status(200).json({
       success: true,
       found: true,
-      stock: item.stockQuantity,
-      itemName: item.itemName,
-      status: item.status,
-      data: item
+      stock: invItem.stockQuantity,
+      itemName: invItem.itemName,
+      status: invItem.status,
+      data: invItem,
+      source: "Inventory"
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error checking stock", error: error.message });
@@ -1848,24 +1985,41 @@ var deductStock = async (req, res) => {
     if (!deductQty || deductQty <= 0) {
       return res.status(400).json({ success: false, message: "Valid quantity required for deduction" });
     }
-    const item = await inventory_model_default.findById(id);
-    if (!item) {
+    let productItem = await ProductMenu.findById(id);
+    if (productItem) {
+      if ((productItem.stock ?? 0) < deductQty) {
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient stock to deduct",
+          available: productItem.stock ?? 0
+        });
+      }
+      productItem.stock = (productItem.stock ?? 0) - deductQty;
+      await productItem.save();
+      return res.status(200).json({
+        success: true,
+        message: `Stock deducted by ${deductQty}. Remaining: ${productItem.stock}`,
+        data: productItem
+      });
+    }
+    const invItem = await inventory_model_default.findById(id);
+    if (!invItem) {
       return res.status(404).json({ success: false, message: "Inventory item not found" });
     }
-    if (item.stockQuantity < deductQty) {
+    if (invItem.stockQuantity < deductQty) {
       return res.status(400).json({
         success: false,
         message: "Insufficient stock to deduct",
-        available: item.stockQuantity
+        available: invItem.stockQuantity
       });
     }
-    item.stockQuantity -= deductQty;
-    item.status = getStockStatus(item.stockQuantity);
-    await item.save();
+    invItem.stockQuantity -= deductQty;
+    invItem.status = getStockStatus(invItem.stockQuantity);
+    await invItem.save();
     res.status(200).json({
       success: true,
-      message: `Stock deducted by ${deductQty}. Remaining: ${item.stockQuantity}`,
-      data: item
+      message: `Stock deducted by ${deductQty}. Remaining: ${invItem.stockQuantity}`,
+      data: invItem
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error deducting stock", error: error.message });
@@ -1909,7 +2063,7 @@ var deleteInventoryItem = async (req, res) => {
 };
 
 // src/routes/inventory.routes.ts
-var router8 = express8.Router();
+var router8 = express12.Router();
 router8.post("/create", createInventoryItem);
 router8.get("/get", getAllInventoryItems);
 router8.get("/check-stock/:itemName", checkStock);
@@ -1917,17 +2071,1265 @@ router8.put("/deduct-stock/:id", deductStock);
 router8.put("/:id", updateInventoryItem);
 router8.delete("/:id", deleteInventoryItem);
 var inventory_routes_default = router8;
+var settingsSchema = new Schema(
+  {
+    orgName: {
+      type: String,
+      required: true,
+      default: "InvenPro Pvt Ltd"
+    },
+    contactEmail: {
+      type: String,
+      required: true,
+      default: "admin@invenpro.com"
+    },
+    industryType: {
+      type: String,
+      required: true,
+      default: "Inventory Management"
+    },
+    phone: {
+      type: String,
+      required: true,
+      default: "+91 98765 43210"
+    },
+    address: {
+      type: String,
+      required: true,
+      default: "123 Industrial Area, Mumbai, Maharashtra - 400001"
+    },
+    timezone: {
+      type: String,
+      required: true,
+      default: "Asia/Kolkata (IST)"
+    },
+    currency: {
+      type: String,
+      required: true,
+      default: "INR (\u20B9)"
+    },
+    dateFormat: {
+      type: String,
+      required: true,
+      default: "DD/MM/YYYY"
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+var SettingsModel = mongoose2.model("Settings", settingsSchema);
+
+// src/controllers/settings.controller.ts
+var getSettings = async (req, res) => {
+  try {
+    let settings = await SettingsModel.findOne();
+    if (!settings) {
+      settings = await SettingsModel.create({
+        orgName: "InvenPro Pvt Ltd",
+        contactEmail: "admin@invenpro.com",
+        industryType: "Inventory Management",
+        phone: "+91 98765 43210",
+        address: "123 Industrial Area, Mumbai, Maharashtra - 400001",
+        timezone: "Asia/Kolkata (IST)",
+        currency: "INR (\u20B9)",
+        dateFormat: "DD/MM/YYYY"
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: settings
+    });
+  } catch (error) {
+    console.error("GET SETTINGS ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve settings.",
+      error: error.message
+    });
+  }
+};
+var updateSettings = async (req, res) => {
+  try {
+    const {
+      orgName,
+      contactEmail,
+      industryType,
+      phone,
+      address,
+      timezone,
+      currency,
+      dateFormat
+    } = req.body;
+    if (!orgName || typeof orgName !== "string" || orgName.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to save settings. Organization Name must be at least 3 characters."
+      });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!contactEmail || typeof contactEmail !== "string" || !emailRegex.test(contactEmail.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to save settings. Please provide a valid Contact Email."
+      });
+    }
+    const phoneRegex = /^\+?[0-9\s\-()]{7,20}$/;
+    if (!phone || typeof phone !== "string" || !phoneRegex.test(phone.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to save settings. Please provide a valid Phone Number containing digits."
+      });
+    }
+    if (!address || typeof address !== "string" || address.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to save settings. Address is required."
+      });
+    }
+    if (!timezone || typeof timezone !== "string" || timezone.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to save settings. Time Zone is required."
+      });
+    }
+    if (!currency || typeof currency !== "string" || currency.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to save settings. Currency is required."
+      });
+    }
+    if (!dateFormat || typeof dateFormat !== "string" || dateFormat.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to save settings. Date Format is required."
+      });
+    }
+    let settings = await SettingsModel.findOne();
+    if (!settings) {
+      settings = new SettingsModel();
+    }
+    settings.orgName = orgName.trim();
+    settings.contactEmail = contactEmail.trim();
+    settings.industryType = industryType.trim();
+    settings.phone = phone.trim();
+    settings.address = address.trim();
+    settings.timezone = timezone.trim();
+    settings.currency = currency.trim();
+    settings.dateFormat = dateFormat.trim();
+    await settings.save();
+    return res.status(200).json({
+      success: true,
+      message: "Organization settings updated successfully.",
+      data: settings
+    });
+  } catch (error) {
+    console.error("UPDATE SETTINGS ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save settings. Please try again.",
+      error: error.message
+    });
+  }
+};
+
+// src/routes/settings.routes.ts
+var router9 = express12.Router();
+router9.get("/get", getSettings);
+router9.put("/update", updateSettings);
+var settings_routes_default = router9;
+var auditLogSchema = new mongoose2.Schema(
+  {
+    userId: {
+      type: String,
+      default: "system"
+    },
+    userName: {
+      type: String,
+      required: true,
+      default: "System"
+    },
+    transactionId: {
+      type: String,
+      required: true
+      // MR ref, PR id, PO id, GRN id, etc.
+    },
+    moduleName: {
+      type: String,
+      required: true,
+      enum: [
+        "Material Request",
+        "Purchase Requisition",
+        "Inventory",
+        "RFQ",
+        "Quotation",
+        "Purchase Order",
+        "GRN",
+        "Material Issue",
+        "Procurement",
+        "System"
+      ]
+    },
+    actionPerformed: {
+      type: String,
+      required: true
+    },
+    previousStatus: {
+      type: String,
+      default: ""
+    },
+    newStatus: {
+      type: String,
+      default: ""
+    },
+    // Optional reference to the source Material Request for quick filtering
+    materialRequestId: {
+      type: String,
+      default: ""
+    },
+    metadata: {
+      type: mongoose2.Schema.Types.Mixed,
+      default: {}
+    }
+  },
+  { timestamps: true }
+);
+auditLogSchema.index({ transactionId: 1 });
+auditLogSchema.index({ materialRequestId: 1 });
+auditLogSchema.index({ moduleName: 1 });
+var auditLog_model_default = mongoose2.model("AuditLog", auditLogSchema);
+
+// src/controllers/auditLog.controller.ts
+var createAuditLog = async (req, res) => {
+  try {
+    const {
+      userId,
+      userName,
+      transactionId,
+      moduleName,
+      actionPerformed,
+      previousStatus,
+      newStatus,
+      materialRequestId,
+      metadata
+    } = req.body;
+    if (!transactionId || !moduleName || !actionPerformed || !userName) {
+      return res.status(400).json({
+        success: false,
+        message: "transactionId, moduleName, actionPerformed, and userName are required."
+      });
+    }
+    const log = await auditLog_model_default.create({
+      userId: userId || "system",
+      userName,
+      transactionId,
+      moduleName,
+      actionPerformed,
+      previousStatus: previousStatus || "",
+      newStatus: newStatus || "",
+      materialRequestId: materialRequestId || "",
+      metadata: metadata || {}
+    });
+    return res.status(201).json({ success: true, data: log });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var getAuditLogs = async (req, res) => {
+  try {
+    const { moduleName, transactionId, limit = 200 } = req.query;
+    const filter = {};
+    if (moduleName) filter.moduleName = moduleName;
+    if (transactionId) filter.transactionId = transactionId;
+    const logs = await auditLog_model_default.find(filter).sort({ createdAt: -1 }).limit(Number(limit));
+    return res.status(200).json({ success: true, count: logs.length, data: logs });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var getAuditLogsByMR = async (req, res) => {
+  try {
+    const { mrId } = req.params;
+    const logs = await auditLog_model_default.find({ materialRequestId: mrId }).sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, count: logs.length, data: logs });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var clearAuditLogs = async (_req, res) => {
+  try {
+    await auditLog_model_default.deleteMany({});
+    return res.status(200).json({ success: true, message: "All audit logs cleared." });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// src/routes/auditLog.routes.ts
+var router10 = express12.Router();
+router10.post("/", createAuditLog);
+router10.get("/", getAuditLogs);
+router10.get("/mr/:mrId", getAuditLogsByMR);
+router10.delete("/clear", clearAuditLogs);
+var auditLog_routes_default = router10;
+var quotationSchema = new mongoose2.Schema({
+  vendorName: { type: String, required: true },
+  vendorContact: { type: String, default: "" },
+  vendorAddress: { type: String, default: "" },
+  unitPrice: { type: Number, required: true },
+  totalAmount: { type: Number, required: true },
+  deliveryDays: { type: Number, default: 7 },
+  warranty: { type: String, default: "" },
+  paymentTerms: { type: String, default: "Net 30" },
+  notes: { type: String, default: "" },
+  submittedAt: { type: Date, default: Date.now }
+}, { _id: false });
+var procurementWorkflowSchema = new mongoose2.Schema(
+  {
+    // ── Source Reference ──
+    materialRequestId: {
+      type: String,
+      required: true,
+      index: true
+    },
+    materialReferenceId: {
+      type: String,
+      required: true
+      // e.g. "MR-2026-005"
+    },
+    productDetails: { type: String, required: true },
+    requestedQty: { type: Number, required: true },
+    stockAtApproval: { type: Number, default: 0 },
+    shortageQty: { type: Number, default: 0 },
+    // = requestedQty - stockAtApproval
+    // ── Purchase Requisition ──
+    prId: { type: String, default: "" },
+    // PR-2026-XXX
+    prStatus: {
+      type: String,
+      enum: ["Auto-Generated", "Approved", "Rejected"],
+      default: "Auto-Generated"
+    },
+    // ── RFQ ──
+    rfqId: { type: String, default: "" },
+    rfqStatus: {
+      type: String,
+      enum: ["Not Created", "Draft", "Sent to Vendors", "Closed"],
+      default: "Not Created"
+    },
+    rfqVendors: [{ type: String }],
+    rfqCreatedAt: { type: Date },
+    rfqResponseDeadline: { type: Date },
+    // ── Quotations ──
+    quotations: [quotationSchema],
+    // ── Vendor Selection ──
+    selectedVendor: {
+      vendorName: { type: String, default: "" },
+      vendorContact: { type: String, default: "" },
+      vendorAddress: { type: String, default: "" },
+      unitPrice: { type: Number, default: 0 },
+      paymentTerms: { type: String, default: "" },
+      deliveryDays: { type: Number, default: 7 }
+    },
+    // ── Purchase Order ──
+    poId: { type: String, default: "" },
+    poStatus: {
+      type: String,
+      enum: ["Not Created", "Draft", "Approved", "Sent to Vendor", "Closed"],
+      default: "Not Created"
+    },
+    poAmount: { type: Number, default: 0 },
+    poExpectedDelivery: { type: String, default: "" },
+    poApprovedBy: { type: String, default: "" },
+    // ── GRN ──
+    grnId: { type: String, default: "" },
+    grnStatus: {
+      type: String,
+      enum: ["Not Created", "Pending QC", "QC Completed", "Inventory Updated"],
+      default: "Not Created"
+    },
+    grnReceivedQty: { type: Number, default: 0 },
+    grnReceivedBy: { type: String, default: "" },
+    grnReceivedDate: { type: String, default: "" },
+    grnConditionNotes: { type: String, default: "" },
+    inventoryUpdated: { type: Boolean, default: false },
+    // ── Stock Issue (final step) ──
+    stockIssued: { type: Boolean, default: false },
+    issuedQty: { type: Number, default: 0 },
+    issuedBy: { type: String, default: "" },
+    issuedAt: { type: Date },
+    // ── Overall workflow status ──
+    workflowStatus: {
+      type: String,
+      enum: [
+        "Procurement Required",
+        "PR Created",
+        "RFQ Created",
+        "Quotations Received",
+        "Vendor Selected",
+        "PO Created",
+        "PO Approved",
+        "Material Received",
+        "GRN Completed",
+        "Inventory Updated",
+        "Ready For Issue",
+        "Stock Issued",
+        "Completed"
+      ],
+      default: "Procurement Required"
+    }
+  },
+  { timestamps: true }
+);
+var procurementWorkflow_model_default = mongoose2.model("ProcurementWorkflow", procurementWorkflowSchema);
+
+// src/controllers/procurement.controller.ts
+var writeAudit = async (params) => {
+  try {
+    await auditLog_model_default.create({
+      userId: params.userId || "system",
+      userName: params.userName,
+      transactionId: params.transactionId,
+      moduleName: params.moduleName,
+      actionPerformed: params.actionPerformed,
+      previousStatus: params.previousStatus || "",
+      newStatus: params.newStatus || "",
+      materialRequestId: params.materialRequestId || "",
+      metadata: params.metadata || {}
+    });
+  } catch (err) {
+    console.warn("[AuditLog] Failed to write audit log:", err);
+  }
+};
+var getWorkflowByMR = async (req, res) => {
+  try {
+    const { mrId } = req.params;
+    const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId: mrId });
+    if (!workflow) {
+      return res.status(404).json({ success: false, message: "No procurement workflow found for this MR." });
+    }
+    return res.status(200).json({ success: true, data: workflow });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var getAllWorkflows = async (_req, res) => {
+  try {
+    const workflows = await procurementWorkflow_model_default.find().sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, count: workflows.length, data: workflows });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var createRFQ = async (req, res) => {
+  try {
+    const {
+      materialRequestId,
+      rfqVendors,
+      rfqResponseDeadline,
+      userName = "Procurement Officer",
+      userId = "system"
+    } = req.body;
+    if (!materialRequestId || !rfqVendors || !Array.isArray(rfqVendors) || rfqVendors.length === 0) {
+      return res.status(400).json({ success: false, message: "materialRequestId and rfqVendors[] are required." });
+    }
+    const mr = await material_model_default.findById(materialRequestId);
+    if (!mr) return res.status(404).json({ success: false, message: "Material Request not found." });
+    let workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
+    if (!workflow) {
+      return res.status(404).json({ success: false, message: "Procurement workflow not found. Approve the MR first." });
+    }
+    const rfqId = await generateSerialId("RFQ");
+    const responseDeadline = rfqResponseDeadline ? new Date(rfqResponseDeadline) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
+    workflow.rfqId = rfqId;
+    workflow.rfqStatus = "Sent to Vendors";
+    workflow.rfqVendors = rfqVendors;
+    workflow.rfqCreatedAt = /* @__PURE__ */ new Date();
+    workflow.rfqResponseDeadline = responseDeadline;
+    workflow.workflowStatus = "RFQ Created";
+    await workflow.save();
+    const prevStatus = mr.status;
+    await material_model_default.findByIdAndUpdate(materialRequestId, {
+      status: "RFQ Created",
+      linkedRfqId: rfqId
+    });
+    await writeAudit({
+      userId,
+      userName,
+      transactionId: rfqId,
+      moduleName: "RFQ",
+      actionPerformed: `RFQ ${rfqId} created and sent to ${rfqVendors.length} vendor(s): ${rfqVendors.join(", ")}`,
+      previousStatus: prevStatus,
+      newStatus: "RFQ Created",
+      materialRequestId,
+      metadata: { rfqVendors, responseDeadline }
+    });
+    return res.status(201).json({
+      success: true,
+      message: `RFQ ${rfqId} created successfully`,
+      data: { rfqId, workflow }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var submitQuotation = async (req, res) => {
+  try {
+    const {
+      materialRequestId,
+      vendorName,
+      vendorContact,
+      vendorAddress,
+      unitPrice,
+      deliveryDays,
+      warranty,
+      paymentTerms,
+      notes,
+      userName = "Vendor",
+      userId = "system"
+    } = req.body;
+    if (!materialRequestId || !vendorName || !unitPrice) {
+      return res.status(400).json({ success: false, message: "materialRequestId, vendorName, and unitPrice are required." });
+    }
+    const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
+    if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    const totalAmount = unitPrice * workflow.requestedQty;
+    const quotation = {
+      vendorName,
+      vendorContact: vendorContact || "",
+      vendorAddress: vendorAddress || "",
+      unitPrice: Number(unitPrice),
+      totalAmount,
+      deliveryDays: Number(deliveryDays) || 7,
+      warranty: warranty || "",
+      paymentTerms: paymentTerms || "Net 30",
+      notes: notes || "",
+      submittedAt: /* @__PURE__ */ new Date()
+    };
+    workflow.quotations.push(quotation);
+    workflow.rfqStatus = "Closed";
+    workflow.workflowStatus = "Quotations Received";
+    await workflow.save();
+    const mr = await material_model_default.findByIdAndUpdate(materialRequestId, { status: "Quotations Received" }, { new: true });
+    await writeAudit({
+      userId,
+      userName,
+      transactionId: workflow.rfqId || materialRequestId,
+      moduleName: "Quotation",
+      actionPerformed: `Quotation submitted by ${vendorName}: \u20B9${unitPrice}/unit, Total: \u20B9${totalAmount}`,
+      previousStatus: mr?.status || "RFQ Created",
+      newStatus: "Quotations Received",
+      materialRequestId,
+      metadata: { vendorName, unitPrice, totalAmount, deliveryDays }
+    });
+    return res.status(201).json({ success: true, message: "Quotation submitted successfully.", data: workflow });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var selectVendor = async (req, res) => {
+  try {
+    const {
+      materialRequestId,
+      vendorName,
+      vendorContact,
+      vendorAddress,
+      unitPrice,
+      paymentTerms,
+      deliveryDays,
+      userName = "Procurement Manager",
+      userId = "system"
+    } = req.body;
+    if (!materialRequestId || !vendorName) {
+      return res.status(400).json({ success: false, message: "materialRequestId and vendorName are required." });
+    }
+    const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
+    if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    workflow.selectedVendor = {
+      vendorName,
+      vendorContact: vendorContact || "",
+      vendorAddress: vendorAddress || "",
+      unitPrice: Number(unitPrice) || 0,
+      paymentTerms: paymentTerms || "Net 30",
+      deliveryDays: Number(deliveryDays) || 7
+    };
+    workflow.workflowStatus = "Vendor Selected";
+    await workflow.save();
+    const mr = await material_model_default.findByIdAndUpdate(materialRequestId, { status: "Vendor Selected" }, { new: true });
+    await writeAudit({
+      userId,
+      userName,
+      transactionId: materialRequestId,
+      moduleName: "Procurement",
+      actionPerformed: `Vendor ${vendorName} selected for Material Request ${workflow.materialReferenceId}. Unit Price: \u20B9${unitPrice}`,
+      previousStatus: "Quotations Received",
+      newStatus: "Vendor Selected",
+      materialRequestId,
+      metadata: { vendorName, unitPrice, paymentTerms }
+    });
+    return res.status(200).json({ success: true, message: `Vendor ${vendorName} selected.`, data: { workflow, mr } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var createPO = async (req, res) => {
+  try {
+    const {
+      materialRequestId,
+      poAmount,
+      poExpectedDelivery,
+      approvedBy,
+      userName = "Procurement Manager",
+      userId = "system"
+    } = req.body;
+    if (!materialRequestId) {
+      return res.status(400).json({ success: false, message: "materialRequestId is required." });
+    }
+    const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
+    if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    const poId = await generateSerialId("PO");
+    workflow.poId = poId;
+    workflow.poStatus = "Approved";
+    workflow.poAmount = Number(poAmount) || workflow.selectedVendor.unitPrice * workflow.requestedQty;
+    workflow.poExpectedDelivery = poExpectedDelivery || "";
+    workflow.poApprovedBy = approvedBy || userName;
+    workflow.workflowStatus = "PO Approved";
+    await workflow.save();
+    await material_model_default.findByIdAndUpdate(materialRequestId, { status: "PO Approved", linkedPoId: poId });
+    await writeAudit({
+      userId,
+      userName,
+      transactionId: poId,
+      moduleName: "Purchase Order",
+      actionPerformed: `Purchase Order ${poId} created and approved. Vendor: ${workflow.selectedVendor.vendorName}. Amount: \u20B9${workflow.poAmount}`,
+      previousStatus: "Vendor Selected",
+      newStatus: "PO Approved",
+      materialRequestId,
+      metadata: { poId, poAmount: workflow.poAmount, vendor: workflow.selectedVendor.vendorName }
+    });
+    return res.status(201).json({ success: true, message: `Purchase Order ${poId} created.`, data: { poId, workflow } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var createGRN = async (req, res) => {
+  try {
+    const {
+      materialRequestId,
+      receivedQty,
+      receivedBy,
+      conditionNotes,
+      userName = "Warehouse Officer",
+      userId = "system"
+    } = req.body;
+    if (!materialRequestId || !receivedQty) {
+      return res.status(400).json({ success: false, message: "materialRequestId and receivedQty are required." });
+    }
+    const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
+    if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    const mr = await material_model_default.findById(materialRequestId);
+    if (!mr) return res.status(404).json({ success: false, message: "Material Request not found." });
+    const grnId = await generateSerialId("GRN");
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    workflow.grnId = grnId;
+    workflow.grnStatus = "Pending QC";
+    workflow.grnReceivedQty = Number(receivedQty);
+    workflow.grnReceivedBy = receivedBy || userName;
+    workflow.grnReceivedDate = today;
+    workflow.grnConditionNotes = conditionNotes || "Received in good condition";
+    workflow.workflowStatus = "GRN Completed";
+    await workflow.save();
+    await material_model_default.findByIdAndUpdate(materialRequestId, { status: "GRN Created", linkedGrnId: grnId });
+    await writeAudit({
+      userId,
+      userName,
+      transactionId: grnId,
+      moduleName: "GRN",
+      actionPerformed: `GRN ${grnId} created. Received ${receivedQty} units of "${mr.productDetails}" from vendor ${workflow.selectedVendor.vendorName}`,
+      previousStatus: "PO Approved",
+      newStatus: "GRN Created",
+      materialRequestId,
+      metadata: { grnId, receivedQty, productDetails: mr.productDetails }
+    });
+    return res.status(201).json({
+      success: true,
+      message: `GRN ${grnId} created successfully. Awaiting QC inspection verification before stock update.`,
+      data: { grnId, inventoryUpdated: false, workflow }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var completeStockIssue = async (req, res) => {
+  try {
+    const {
+      materialRequestId,
+      issuedBy,
+      userName = "Warehouse Officer",
+      userId = "system"
+    } = req.body;
+    if (!materialRequestId) {
+      return res.status(400).json({ success: false, message: "materialRequestId is required." });
+    }
+    const mr = await material_model_default.findById(materialRequestId);
+    if (!mr) return res.status(404).json({ success: false, message: "Material Request not found." });
+    const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
+    if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    const productName = mr.productDetails.trim();
+    const requestedQty = mr.quantity;
+    let currentStock = 0;
+    let stockItemId = "";
+    let stockSource = "";
+    const productItem = await ProductMenu.findOne({
+      name: { $regex: new RegExp(`^\\s*${productName}\\s*$`, "i") }
+    });
+    if (productItem) {
+      currentStock = productItem.stock ?? 0;
+      stockItemId = String(productItem._id);
+      stockSource = "ProductMenu";
+    } else {
+      const invItem = await inventory_model_default.findOne({
+        itemName: { $regex: new RegExp(`^\\s*${productName}\\s*$`, "i") }
+      });
+      if (invItem) {
+        currentStock = invItem.stockQuantity;
+        stockItemId = String(invItem._id);
+        stockSource = "Inventory";
+      }
+    }
+    if (currentStock < requestedQty) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock to issue. Available: ${currentStock}, Required: ${requestedQty}`,
+        currentStock,
+        requestedQty
+      });
+    }
+    if (stockSource === "ProductMenu") {
+      await ProductMenu.findByIdAndUpdate(stockItemId, { $inc: { stock: -requestedQty } });
+    } else {
+      const invItem = await inventory_model_default.findById(stockItemId);
+      if (invItem) {
+        invItem.stockQuantity -= requestedQty;
+        if (invItem.stockQuantity <= 0) invItem.status = "Out of Stock";
+        else if (invItem.stockQuantity < 10) invItem.status = "Low Stock";
+        else invItem.status = "In Stock";
+        await invItem.save();
+      }
+    }
+    await material_model_default.findByIdAndUpdate(materialRequestId, {
+      status: "Completed",
+      issuedQty: requestedQty
+    });
+    workflow.stockIssued = true;
+    workflow.issuedQty = requestedQty;
+    workflow.issuedBy = issuedBy || userName;
+    workflow.issuedAt = /* @__PURE__ */ new Date();
+    workflow.workflowStatus = "Completed";
+    await workflow.save();
+    await writeAudit({
+      userId,
+      userName,
+      transactionId: mr.referenceId,
+      moduleName: "Material Issue",
+      actionPerformed: `${requestedQty} units of "${mr.productDetails}" issued to ${mr.requester} (Dept: ${mr.department}). Stock deducted from inventory.`,
+      previousStatus: "Inventory Updated",
+      newStatus: "Stock Issued",
+      materialRequestId,
+      metadata: { issuedQty: requestedQty, productDetails: mr.productDetails, requester: mr.requester }
+    });
+    await writeAudit({
+      userId,
+      userName,
+      transactionId: mr.referenceId,
+      moduleName: "Material Request",
+      actionPerformed: `Material Request ${mr.referenceId} completed via procurement workflow. All ${requestedQty} units issued successfully.`,
+      previousStatus: "Stock Issued",
+      newStatus: "Completed",
+      materialRequestId,
+      metadata: { workflow: "procurement", completedAt: /* @__PURE__ */ new Date() }
+    });
+    return res.status(200).json({
+      success: true,
+      message: `Stock issued successfully. Material Request ${mr.referenceId} marked as Completed.`,
+      data: { issuedQty: requestedQty, remainingStock: currentStock - requestedQty, workflow }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// src/routes/procurement.routes.ts
+var router11 = express12.Router();
+router11.get("/workflows", getAllWorkflows);
+router11.get("/workflow/:mrId", getWorkflowByMR);
+router11.post("/rfq", createRFQ);
+router11.post("/quotation", submitQuotation);
+router11.put("/select-vendor", selectVendor);
+router11.post("/po", createPO);
+router11.post("/grn", createGRN);
+router11.put("/issue", completeStockIssue);
+var procurement_routes_default = router11;
+var qcInspectionSchema = new mongoose2.Schema(
+  {
+    qcId: { type: String, required: true, unique: true },
+    grnId: { type: String, required: true },
+    poId: { type: String, default: "" },
+    vendorName: { type: String, required: true },
+    itemName: { type: String, required: true },
+    receivedQty: { type: Number, required: true },
+    passedQty: { type: Number, required: true },
+    failedQty: { type: Number, required: true },
+    status: { type: String, enum: ["Pending", "Completed"], default: "Pending" },
+    result: { type: String, enum: ["Pass", "Fail", "Partial", "-"], default: "-" },
+    inspector: { type: String, default: "" },
+    notes: { type: String, default: "" },
+    inspectedDate: { type: String, default: "" }
+  },
+  { timestamps: true }
+);
+var qcInspection_model_default = mongoose2.model("QcInspection", qcInspectionSchema);
+var rtvSchema = new mongoose2.Schema(
+  {
+    rtvNumber: { type: String, required: true, unique: true },
+    qcId: { type: String, required: true },
+    grnId: { type: String, required: true },
+    poNumber: { type: String, default: "" },
+    vendorName: { type: String, required: true },
+    itemName: { type: String, required: true },
+    rejectedQuantity: { type: Number, required: true },
+    reason: { type: String, required: true },
+    createdDate: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["Pending Approval", "Vendor Notified", "Material Returned", "Replacement Received / Refund Processed", "Completed"],
+      default: "Pending Approval"
+    },
+    remarks: { type: String, default: "" }
+  },
+  { timestamps: true }
+);
+var rtv_model_default = mongoose2.model("Rtv", rtvSchema);
+var movementHistorySchema = new mongoose2.Schema(
+  {
+    action: { type: String, required: true },
+    user: { type: String, required: true },
+    previousStatus: { type: String, default: "" },
+    newStatus: { type: String, default: "" },
+    timestamp: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+var barcodeSchema = new mongoose2.Schema(
+  {
+    barcodeNumber: { type: String, required: true, unique: true },
+    productCode: { type: String, default: "" },
+    productName: { type: String, required: true },
+    category: { type: String, default: "General" },
+    grnId: { type: String, default: "" },
+    vendorName: { type: String, default: "" },
+    storageLocation: { type: String, default: "Main Warehouse - Rack 1" },
+    status: {
+      type: String,
+      enum: ["Generated", "Received", "QC Approved", "Stored", "Issued", "Assigned", "Returned", "Available"],
+      default: "Generated"
+    },
+    // Asset assignment properties
+    employeeName: { type: String, default: "" },
+    department: { type: String, default: "" },
+    issueDate: { type: String, default: "" },
+    returnDate: { type: String, default: "" },
+    movementHistory: [movementHistorySchema]
+  },
+  { timestamps: true }
+);
+var barcode_model_default = mongoose2.model("Barcode", barcodeSchema);
+
+// src/controllers/qc.controller.ts
+var writeAudit2 = async (params) => {
+  try {
+    await auditLog_model_default.create({
+      userId: params.userId || "system",
+      userName: params.userName,
+      transactionId: params.transactionId,
+      moduleName: params.moduleName,
+      actionPerformed: params.actionPerformed,
+      previousStatus: params.previousStatus || "",
+      newStatus: params.newStatus || "",
+      materialRequestId: params.materialRequestId || "",
+      metadata: params.metadata || {}
+    });
+  } catch (err) {
+    console.warn("[AuditLog] Failed to write audit log in QC:", err);
+  }
+};
+var getQCInspections = async (req, res) => {
+  try {
+    const inspections = await qcInspection_model_default.find().sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, count: inspections.length, data: inspections });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var createQCInspectionShell = async (req, res) => {
+  try {
+    const { grnId, poId, vendorName, itemName, receivedQty, materialRequestId } = req.body;
+    const qcId = "QC-" + Date.now();
+    const shell = await qcInspection_model_default.create({
+      qcId,
+      grnId,
+      poId: poId || "",
+      vendorName,
+      itemName,
+      receivedQty: Number(receivedQty),
+      passedQty: 0,
+      failedQty: 0,
+      status: "Pending"
+    });
+    return res.status(201).json({ success: true, data: shell });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var completeQCInspection = async (req, res) => {
+  try {
+    const {
+      grnId,
+      passedQty,
+      failedQty,
+      inspector,
+      notes,
+      userName = "QC Inspector",
+      userId = "system",
+      materialRequestId
+    } = req.body;
+    if (!grnId || passedQty === void 0 || failedQty === void 0) {
+      return res.status(400).json({ success: false, message: "grnId, passedQty, and failedQty are required." });
+    }
+    let workflow = await procurementWorkflow_model_default.findOne({ grnId });
+    let mrReferenceId = "MR-REF";
+    let actualMrId = materialRequestId;
+    if (workflow) {
+      mrReferenceId = workflow.materialReferenceId;
+      actualMrId = workflow.materialRequestId;
+    }
+    const mr = await material_model_default.findById(actualMrId);
+    const totalQty = Number(passedQty) + Number(failedQty);
+    const qcId = "QC-2026-" + Math.floor(1e3 + Math.random() * 9e3);
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    let resultVal = "Pass";
+    if (passedQty === 0) resultVal = "Fail";
+    else if (failedQty > 0) resultVal = "Partial";
+    const inspection = await qcInspection_model_default.create({
+      qcId,
+      grnId,
+      poId: workflow?.poId || mr?.linkedPoId || "",
+      vendorName: workflow?.selectedVendor?.vendorName || mr?.requester || "Vendor",
+      itemName: mr?.productDetails || "Product",
+      receivedQty: totalQty,
+      passedQty: Number(passedQty),
+      failedQty: Number(failedQty),
+      status: "Completed",
+      result: resultVal,
+      inspector: inspector || userName,
+      notes: notes || "QC Verification audit passed.",
+      inspectedDate: today
+    });
+    await writeAudit2({
+      userId,
+      userName,
+      transactionId: qcId,
+      moduleName: "RFQ",
+      // we will use general/audit mapping
+      actionPerformed: `QC Inspection ${qcId} performed for GRN ${grnId}. Status: ${resultVal}. Passed: ${passedQty}, Failed: ${failedQty}.`,
+      previousStatus: "Pending QC Inspection",
+      newStatus: resultVal === "Pass" ? "Passed" : resultVal === "Partial" ? "Partial" : "Failed",
+      materialRequestId: actualMrId
+    });
+    let inventoryUpdated = false;
+    if (passedQty > 0) {
+      const productName = (mr?.productDetails || workflow?.productDetails || "Product").trim();
+      let productItem = await ProductMenu.findOne({
+        name: { $regex: new RegExp(`^\\s*${productName}\\s*$`, "i") }
+      });
+      if (productItem) {
+        productItem.stock = (productItem.stock ?? 0) + Number(passedQty);
+        await productItem.save();
+        inventoryUpdated = true;
+      } else {
+        let invItem = await inventory_model_default.findOne({
+          itemName: { $regex: new RegExp(`^\\s*${productName}\\s*$`, "i") }
+        });
+        if (invItem) {
+          invItem.stockQuantity += Number(passedQty);
+          if (invItem.stockQuantity <= 0) invItem.status = "Out of Stock";
+          else if (invItem.stockQuantity < 10) invItem.status = "Low Stock";
+          else invItem.status = "In Stock";
+          await invItem.save();
+          inventoryUpdated = true;
+        } else {
+          await ProductMenu.create({
+            name: productName,
+            category: "Hardware",
+            unit: "pcs",
+            price: 45e3,
+            stock: Number(passedQty)
+          });
+          inventoryUpdated = true;
+        }
+      }
+      await writeAudit2({
+        userId,
+        userName,
+        transactionId: qcId,
+        moduleName: "Inventory",
+        actionPerformed: `Inventory stock updated: +${passedQty} units of "${productName}" added to system stock after QC verification.`,
+        previousStatus: "GRN Created",
+        newStatus: "Inventory Updated",
+        materialRequestId: actualMrId
+      });
+      const prefix = productName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, "ITM");
+      const generatedBarcodes = [];
+      for (let i = 1; i <= Number(passedQty); i++) {
+        const barcodeNum = `${prefix}-2026-${String(Math.floor(1e3 + Math.random() * 9e3))}-${String(i).padStart(3, "0")}`;
+        const bRecord = await barcode_model_default.create({
+          barcodeNumber: barcodeNum,
+          productCode: prefix + "-CODE",
+          productName,
+          category: "Hardware",
+          grnId,
+          vendorName: workflow?.selectedVendor?.vendorName || "Vendor",
+          storageLocation: "Warehouse A - Shelf " + Math.floor(1 + Math.random() * 5),
+          status: "QC Approved",
+          movementHistory: [
+            {
+              action: "Initial Barcode Generation & Reception after QC Approval",
+              user: inspector || userName,
+              previousStatus: "Received",
+              newStatus: "QC Approved"
+            }
+          ]
+        });
+        generatedBarcodes.push(barcodeNum);
+      }
+    }
+    let rtvRecord = null;
+    if (failedQty > 0) {
+      const rtvNumber = "RTV-2026-" + Math.floor(1e3 + Math.random() * 9e3);
+      rtvRecord = await rtv_model_default.create({
+        rtvNumber,
+        qcId,
+        grnId,
+        poNumber: workflow?.poId || mr?.linkedPoId || "",
+        vendorName: workflow?.selectedVendor?.vendorName || "Vendor",
+        itemName: mr?.productDetails || "Product",
+        rejectedQuantity: Number(failedQty),
+        reason: notes || "Transit packaging damage or physical checklist discrepancy",
+        createdDate: today,
+        status: "Pending Approval"
+      });
+      await writeAudit2({
+        userId,
+        userName,
+        transactionId: rtvNumber,
+        moduleName: "Procurement",
+        actionPerformed: `RTV record ${rtvNumber} auto-created for return of ${failedQty} rejected units to ${workflow?.selectedVendor?.vendorName || "Vendor"}.`,
+        previousStatus: "QC Failed",
+        newStatus: "Pending Approval",
+        materialRequestId: actualMrId
+      });
+    }
+    if (workflow) {
+      workflow.grnStatus = "QC Completed";
+      workflow.inventoryUpdated = true;
+      workflow.workflowStatus = "Inventory Updated";
+      await workflow.save();
+    }
+    if (mr) {
+      mr.status = "Inventory Updated";
+      mr.linkedGrnId = grnId;
+      await mr.save();
+    }
+    return res.status(200).json({
+      success: true,
+      message: "QC Inspection finalized successfully.",
+      data: {
+        inspection,
+        rtvRecord,
+        inventoryUpdated
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var getRtvRecords = async (req, res) => {
+  try {
+    const records = await rtv_model_default.find().sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, count: records.length, data: records });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var updateRtvStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, remarks, userName = "Procurement Manager", userId = "system" } = req.body;
+    const rtv = await rtv_model_default.findById(id);
+    if (!rtv) return res.status(404).json({ success: false, message: "RTV record not found." });
+    const prevStatus = rtv.status;
+    rtv.status = status;
+    if (remarks) rtv.remarks = remarks;
+    await rtv.save();
+    await writeAudit2({
+      userId,
+      userName,
+      transactionId: rtv.rtvNumber,
+      moduleName: "Procurement",
+      actionPerformed: `RTV ${rtv.rtvNumber} status changed from "${prevStatus}" to "${status}". Remarks: ${remarks || "None"}`,
+      previousStatus: prevStatus,
+      newStatus: status
+    });
+    return res.status(200).json({ success: true, message: "RTV record updated successfully.", data: rtv });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var getBarcodes = async (req, res) => {
+  try {
+    const barcodes = await barcode_model_default.find().sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, count: barcodes.length, data: barcodes });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var getBarcodeByCode = async (req, res) => {
+  try {
+    const { code } = req.params;
+    const barcode = await barcode_model_default.findOne({ barcodeNumber: code });
+    if (!barcode) return res.status(404).json({ success: false, message: "Barcode not found." });
+    return res.status(200).json({ success: true, data: barcode });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var assignAsset = async (req, res) => {
+  try {
+    const { barcodeNumber, employeeName, department, userName = "Admin", userId = "system" } = req.body;
+    const barcode = await barcode_model_default.findOne({ barcodeNumber });
+    if (!barcode) return res.status(404).json({ success: false, message: "Asset barcode not found." });
+    const prevStatus = barcode.status;
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    barcode.status = "Assigned";
+    barcode.employeeName = employeeName;
+    barcode.department = department;
+    barcode.issueDate = today;
+    barcode.returnDate = "";
+    barcode.movementHistory.push({
+      action: `Assigned to ${employeeName} (Dept: ${department})`,
+      user: userName,
+      previousStatus: prevStatus,
+      newStatus: "Assigned"
+    });
+    await barcode.save();
+    await writeAudit2({
+      userId,
+      userName,
+      transactionId: barcodeNumber,
+      moduleName: "Material Issue",
+      actionPerformed: `Asset serialization barcode ${barcodeNumber} assigned to employee "${employeeName}" (Dept: ${department})`,
+      previousStatus: prevStatus,
+      newStatus: "Assigned"
+    });
+    return res.status(200).json({ success: true, message: `Asset ${barcodeNumber} successfully assigned to ${employeeName}.`, data: barcode });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var returnAsset = async (req, res) => {
+  try {
+    const { barcodeNumber, userName = "Admin", userId = "system" } = req.body;
+    const barcode = await barcode_model_default.findOne({ barcodeNumber });
+    if (!barcode) return res.status(404).json({ success: false, message: "Asset barcode not found." });
+    const prevStatus = barcode.status;
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    barcode.status = "Available";
+    barcode.returnDate = today;
+    barcode.movementHistory.push({
+      action: `Returned by ${barcode.employeeName}`,
+      user: userName,
+      previousStatus: prevStatus,
+      newStatus: "Available"
+    });
+    const oldEmployeeName = barcode.employeeName;
+    barcode.employeeName = "";
+    barcode.department = "";
+    await barcode.save();
+    await writeAudit2({
+      userId,
+      userName,
+      transactionId: barcodeNumber,
+      moduleName: "Material Request",
+      actionPerformed: `Asset serialization barcode ${barcodeNumber} returned by "${oldEmployeeName}". Returned back to stock.`,
+      previousStatus: prevStatus,
+      newStatus: "Available"
+    });
+    return res.status(200).json({ success: true, message: `Asset ${barcodeNumber} returned successfully.`, data: barcode });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var runStockAudit = async (req, res) => {
+  try {
+    const { scannedBarcodes } = req.body;
+    if (!scannedBarcodes || !Array.isArray(scannedBarcodes)) {
+      return res.status(400).json({ success: false, message: "scannedBarcodes array is required." });
+    }
+    const allBarcodes = await barcode_model_default.find();
+    const physicalStock = scannedBarcodes.length;
+    const systemStock = allBarcodes.length;
+    const missingItems = allBarcodes.filter((b) => !scannedBarcodes.includes(b.barcodeNumber));
+    const extraItems = scannedBarcodes.filter((code) => !allBarcodes.some((b) => b.barcodeNumber === code));
+    return res.status(200).json({
+      success: true,
+      summary: {
+        physicalStock,
+        systemStock,
+        missingCount: missingItems.length,
+        extraCount: extraItems.length
+      },
+      missingItems,
+      extraItems
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// src/routes/qc.routes.ts
+var router12 = express12.Router();
+router12.get("/inspections", getQCInspections);
+router12.post("/inspections/shell", createQCInspectionShell);
+router12.post("/inspections/complete", completeQCInspection);
+router12.get("/rtv", getRtvRecords);
+router12.put("/rtv/:id", updateRtvStatus);
+router12.get("/barcodes", getBarcodes);
+router12.get("/barcodes/:code", getBarcodeByCode);
+router12.post("/assets/assign", assignAsset);
+router12.post("/assets/return", returnAsset);
+router12.post("/audit", runStockAudit);
+var qc_routes_default = router12;
 
 // src/server.ts
 var __filename$1 = fileURLToPath(import.meta.url);
 var __dirname$1 = path.dirname(__filename$1);
-var app = express8();
+var app = express12();
 var publicDir = path.join(__dirname$1, "..", "public");
-app.use(express8.static(publicDir));
+app.use(express12.static(publicDir));
 var server = createServer(app);
 app.use(response_middleware_default);
-app.use(express8.json());
-app.use(express8.urlencoded({ extended: true }));
+app.use(express12.json());
+app.use(express12.urlencoded({ extended: true }));
 app.use(cookieParser());
 applyCores({ app });
 var initialize = () => {
@@ -1950,6 +3352,10 @@ app.use("/api/purchase-request", purchaseRequest_routes_default);
 app.use("/api/inventory", inventory_routes_default);
 app.use("/api/productmenu", productmenu_routes_default);
 app.use("/api/auth", authRoutes_default);
+app.use("/api/settings", settings_routes_default);
+app.use("/api/audit-log", auditLog_routes_default);
+app.use("/api/procurement", procurement_routes_default);
+app.use("/api/qc", qc_routes_default);
 app.use("/api/employees", employeeRoutes_default);
 app.use(notFoundMiddleware);
 app.use(errorHandler);

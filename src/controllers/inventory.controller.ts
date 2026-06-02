@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Inventory from "../models/inventory.model.js";
+import { ProductMenu } from "../models/productmenu.model.js";
 
 // Helper to determine status based on quantity
 const getStockStatus = (quantity: number): "In Stock" | "Low Stock" | "Out of Stock" => {
@@ -61,13 +62,31 @@ export const getAllInventoryItems = async (req: Request, res: Response) => {
 export const checkStock = async (req: Request, res: Response) => {
   try {
     const { itemName } = req.params;
+    const trimmedName = (itemName || "").trim();
 
-    // Case-insensitive search for item name
-    const item = await Inventory.findOne({
-      itemName: { $regex: new RegExp(`^${itemName}$`, "i") },
+    // Case-insensitive search with whitespace tolerance in ProductMenu (Masters -> Products) first
+    let item = await ProductMenu.findOne({
+      name: { $regex: new RegExp(`^\\s*${trimmedName}\\s*$`, "i") },
     });
 
-    if (!item) {
+    if (item) {
+      return res.status(200).json({
+        success: true,
+        found: true,
+        stock: item.stock ?? 0,
+        itemName: item.name,
+        status: (item.stock ?? 0) > 0 ? "In Stock" : "Out of Stock",
+        data: item,
+        source: "ProductMenu"
+      });
+    }
+
+    // Fallback: case-insensitive search with whitespace tolerance in Inventory model
+    const invItem = await Inventory.findOne({
+      itemName: { $regex: new RegExp(`^\\s*${trimmedName}\\s*$`, "i") },
+    });
+
+    if (!invItem) {
       return res.status(200).json({
         success: true,
         found: false,
@@ -80,10 +99,11 @@ export const checkStock = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       found: true,
-      stock: item.stockQuantity,
-      itemName: item.itemName,
-      status: item.status,
-      data: item,
+      stock: invItem.stockQuantity,
+      itemName: invItem.itemName,
+      status: invItem.status,
+      data: invItem,
+      source: "Inventory"
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: "Error checking stock", error: error.message });
@@ -104,27 +124,48 @@ export const deductStock = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "Valid quantity required for deduction" });
     }
 
-    const item = await Inventory.findById(id);
-    if (!item) {
-      return res.status(404).json({ success: false, message: "Inventory item not found" });
-    }
+    // First try to deduct from ProductMenu
+    let productItem = await ProductMenu.findById(id);
+    if (productItem) {
+      if ((productItem.stock ?? 0) < deductQty) {
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient stock to deduct",
+          available: productItem.stock ?? 0,
+        });
+      }
+      productItem.stock = (productItem.stock ?? 0) - deductQty;
+      await productItem.save();
 
-    if (item.stockQuantity < deductQty) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient stock to deduct",
-        available: item.stockQuantity,
+      return res.status(200).json({
+        success: true,
+        message: `Stock deducted by ${deductQty}. Remaining: ${productItem.stock}`,
+        data: productItem,
       });
     }
 
-    item.stockQuantity -= deductQty;
-    item.status = getStockStatus(item.stockQuantity);
-    await item.save();
+    // Fallback: try to deduct from Inventory
+    const invItem = await Inventory.findById(id);
+    if (!invItem) {
+      return res.status(404).json({ success: false, message: "Inventory item not found" });
+    }
+
+    if (invItem.stockQuantity < deductQty) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient stock to deduct",
+        available: invItem.stockQuantity,
+      });
+    }
+
+    invItem.stockQuantity -= deductQty;
+    invItem.status = getStockStatus(invItem.stockQuantity);
+    await invItem.save();
 
     res.status(200).json({
       success: true,
-      message: `Stock deducted by ${deductQty}. Remaining: ${item.stockQuantity}`,
-      data: item,
+      message: `Stock deducted by ${deductQty}. Remaining: ${invItem.stockQuantity}`,
+      data: invItem,
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: "Error deducting stock", error: error.message });

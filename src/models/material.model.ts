@@ -34,20 +34,36 @@ const materialSchema = new mongoose.Schema(
       default: "Low",
     },
 
-    // ✅ FINAL STATUS ENUM (includes approval workflow states)
+    // ✅ FULL PROCUREMENT LIFECYCLE STATUS ENUM
     status: {
       type: String,
       enum: [
         "Pending",
         "Approved",
+        "Ready For Issue",
         "Rejected",
         "Completed",
         "Procurement Required",
+        "RFQ Created",
+        "Quotations Received",
+        "Vendor Selected",
         "PO Created",
-        "Procurement Completed"
+        "PO Approved",
+        "GRN Created",
+        "Inventory Updated",
+        "Stock Issued",
+        "Procurement Completed",
       ],
       default: "Pending",
     },
+
+    // ✅ Procurement Reference Links
+    linkedPrId:  { type: String, default: "" },
+    linkedRfqId: { type: String, default: "" },
+    linkedPoId:  { type: String, default: "" },
+    linkedGrnId: { type: String, default: "" },
+    issuedQty:   { type: Number, default: 0 },
+    stockAvailableAtApproval: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

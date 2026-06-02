@@ -2,6 +2,14 @@ import mongoose from "mongoose";
 
 const purchaseRequestSchema = new mongoose.Schema(
   {
+    // ERP-style serial ID: PR-2026-001, PR-2026-002, ...
+    requestId: {
+      type: String,
+      unique: true,
+      sparse: true, // allows existing docs without this field
+      index: true,
+      trim: true,
+    },
     department: {
       type: String,
       required: true,

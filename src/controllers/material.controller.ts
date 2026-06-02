@@ -188,6 +188,57 @@ export const procurementRequired = async (req, res) => {
 };
 
 // ======================
+// PO CREATED (Purchase Order generated for request)
+// ======================
+export const poCreated = async (req, res) => {
+  try {
+    const updated = await Material.findByIdAndUpdate(
+      req.params.id,
+      { status: "PO Created" },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Status updated to PO Created",
+      data: updated,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ======================
+// UPDATE STATUS (General status update endpoint)
+// ======================
+export const updateStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const updated = await Material.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: "Material not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Status updated to ${status}`,
+      data: updated,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ======================
 // DELETE
 // ======================
 export const deleteMaterial = async (req, res) => {
