@@ -31,8 +31,9 @@ import auditLogRoutes from "./routes/auditLog.routes.js";
 import procurementRoutes from "./routes/procurement.routes.js";
 import qcRoutes from "./routes/qc.routes.js";
 
-const publicDir = path.join(__dirname, "..", "public");
+const publicDir = path.join(process.cwd(), "public");
 app.use(express.static(publicDir));
+app.use("/uploads", express.static(path.join(process.cwd(), "public/uploads")));
 export type AppType = typeof app; export const server = createServer(app);
 app.use(responseHandler);
 app.use(express.json());

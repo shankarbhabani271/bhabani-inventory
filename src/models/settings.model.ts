@@ -41,6 +41,14 @@ const settingsSchema = new Schema(
       type: String,
       required: true,
       default: "DD/MM/YYYY"
+    },
+    logoUrl: {
+      type: String,
+      default: ""
+    },
+    logoVersion: {
+      type: Number,
+      default: 0
     }
   },
   {

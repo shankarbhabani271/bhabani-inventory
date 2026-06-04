@@ -1,12 +1,12 @@
 import { purchaseRequest_model_default } from './chunk-3XMI2BOX.js';
 import cookieParser from 'cookie-parser';
 import express12, { Router } from 'express';
-import path from 'path';
+import path2 from 'path';
 import { fileURLToPath } from 'url';
 import morgan from 'morgan';
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
-import fs from 'fs';
+import fs2 from 'fs';
 import mongoose2, { Schema } from 'mongoose';
 import { createServer } from 'http';
 import { z, ZodError } from 'zod';
@@ -18,10 +18,11 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import multer from 'multer';
 
-var LOG_DIR = path.resolve(process.cwd(), "logs");
-if (!fs.existsSync(LOG_DIR)) {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
+var LOG_DIR = path2.resolve(process.cwd(), "logs");
+if (!fs2.existsSync(LOG_DIR)) {
+  fs2.mkdirSync(LOG_DIR, { recursive: true });
 }
 var baseFormat = winston.format.combine(
   winston.format.timestamp(),
@@ -33,14 +34,14 @@ var logger = winston.createLogger({
   format: baseFormat,
   transports: [
     new DailyRotateFile({
-      filename: path.join(LOG_DIR, "app-%DATE%.log"),
+      filename: path2.join(LOG_DIR, "app-%DATE%.log"),
       datePattern: "YYYY-MM-DD",
       maxSize: "20m",
       maxFiles: "14d",
       zippedArchive: true
     }),
     new DailyRotateFile({
-      filename: path.join(LOG_DIR, "error-%DATE%.log"),
+      filename: path2.join(LOG_DIR, "error-%DATE%.log"),
       datePattern: "YYYY-MM-DD",
       level: "error",
       maxSize: "20m",
@@ -2112,6 +2113,14 @@ var settingsSchema = new Schema(
       type: String,
       required: true,
       default: "DD/MM/YYYY"
+    },
+    logoUrl: {
+      type: String,
+      default: ""
+    },
+    logoVersion: {
+      type: Number,
+      default: 0
     }
   },
   {
@@ -2119,9 +2128,32 @@ var settingsSchema = new Schema(
   }
 );
 var SettingsModel = mongoose2.model("Settings", settingsSchema);
-
-// src/controllers/settings.controller.ts
-var getSettings = async (req, res) => {
+var uploadDir = path2.join(process.cwd(), "public/uploads/logos");
+if (!fs2.existsSync(uploadDir)) {
+  fs2.mkdirSync(uploadDir, { recursive: true });
+}
+var MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+var storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path2.extname(file.originalname).toLowerCase();
+    cb(null, `org-logo-${Date.now()}${ext}`);
+  }
+});
+var logoUpload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("INVALID_FILE_TYPE"));
+    }
+  }
+}).single("logo");
+var getSettings = async (_req, res) => {
   try {
     let settings = await SettingsModel.findOne();
     if (!settings) {
@@ -2133,7 +2165,8 @@ var getSettings = async (req, res) => {
         address: "123 Industrial Area, Mumbai, Maharashtra - 400001",
         timezone: "Asia/Kolkata (IST)",
         currency: "INR (\u20B9)",
-        dateFormat: "DD/MM/YYYY"
+        dateFormat: "DD/MM/YYYY",
+        logoUrl: ""
       });
     }
     return res.status(200).json({
@@ -2151,16 +2184,7 @@ var getSettings = async (req, res) => {
 };
 var updateSettings = async (req, res) => {
   try {
-    const {
-      orgName,
-      contactEmail,
-      industryType,
-      phone,
-      address,
-      timezone,
-      currency,
-      dateFormat
-    } = req.body;
+    const { orgName, contactEmail, industryType, phone, address, timezone, currency, dateFormat } = req.body;
     if (!orgName || typeof orgName !== "string" || orgName.trim().length < 3) {
       return res.status(400).json({
         success: false,
@@ -2232,11 +2256,96 @@ var updateSettings = async (req, res) => {
     });
   }
 };
+var uploadLogo = async (req, res) => {
+  logoUpload(req, res, async (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({ success: false, message: "Maximum file size allowed is 2 MB." });
+      }
+      if (err.message === "INVALID_FILE_TYPE") {
+        return res.status(400).json({ success: false, message: "Only PNG, JPG, JPEG and SVG image files are allowed." });
+      }
+      return res.status(400).json({ success: false, message: err.message || "Upload failed." });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file provided." });
+    }
+    try {
+      const logoUrl = `/uploads/logos/${req.file.filename}`;
+      let settings = await SettingsModel.findOne();
+      if (!settings) {
+        settings = new SettingsModel();
+      }
+      if (settings.logoUrl) {
+        const oldPath = path2.join(process.cwd(), "public", settings.logoUrl);
+        if (fs2.existsSync(oldPath)) {
+          fs2.unlinkSync(oldPath);
+        }
+      }
+      settings.logoUrl = logoUrl;
+      settings.logoVersion = Date.now();
+      await settings.save();
+      return res.status(200).json({
+        success: true,
+        message: "Logo uploaded successfully.",
+        logoUrl: settings.logoUrl,
+        logoVersion: settings.logoVersion,
+        updatedAt: settings.updatedAt,
+        data: {
+          logoUrl: settings.logoUrl,
+          logoVersion: settings.logoVersion,
+          updatedAt: settings.updatedAt
+        }
+      });
+    } catch (error) {
+      console.error("UPLOAD LOGO ERROR:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to save logo. Please try again.",
+        error: error.message
+      });
+    }
+  });
+};
+var removeLogo = async (_req, res) => {
+  try {
+    const settings = await SettingsModel.findOne();
+    if (!settings) {
+      return res.status(404).json({ success: false, message: "Settings not found." });
+    }
+    if (settings.logoUrl) {
+      const filePath = path2.join(process.cwd(), "public", settings.logoUrl);
+      if (fs2.existsSync(filePath)) {
+        fs2.unlinkSync(filePath);
+      }
+    }
+    settings.logoUrl = "";
+    settings.logoVersion = 0;
+    await settings.save();
+    return res.status(200).json({
+      success: true,
+      message: "Logo removed successfully.",
+      logoUrl: "",
+      logoVersion: 0,
+      updatedAt: settings.updatedAt,
+      data: { logoUrl: "", logoVersion: 0, updatedAt: settings.updatedAt }
+    });
+  } catch (error) {
+    console.error("REMOVE LOGO ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to remove logo.",
+      error: error.message
+    });
+  }
+};
 
 // src/routes/settings.routes.ts
 var router9 = express12.Router();
 router9.get("/get", getSettings);
 router9.put("/update", updateSettings);
+router9.post("/upload-logo", uploadLogo);
+router9.delete("/remove-logo", removeLogo);
 var settings_routes_default = router9;
 var auditLogSchema = new mongoose2.Schema(
   {
@@ -3322,10 +3431,11 @@ var qc_routes_default = router12;
 
 // src/server.ts
 var __filename$1 = fileURLToPath(import.meta.url);
-var __dirname$1 = path.dirname(__filename$1);
+var __dirname$1 = path2.dirname(__filename$1);
 var app = express12();
-var publicDir = path.join(__dirname$1, "..", "public");
+var publicDir = path2.join(process.cwd(), "public");
 app.use(express12.static(publicDir));
+app.use("/uploads", express12.static(path2.join(process.cwd(), "public/uploads")));
 var server = createServer(app);
 app.use(response_middleware_default);
 app.use(express12.json());
@@ -3338,7 +3448,7 @@ var initialize = () => {
 initialize();
 server_config_default({ server });
 app.get("/", (_, res) => {
-  res.sendFile(path.join(__dirname$1, "../public/starter.html"));
+  res.sendFile(path2.join(__dirname$1, "../public/starter.html"));
 });
 app.set("trust proxy", true);
 app.use(requestContextMiddleware);
