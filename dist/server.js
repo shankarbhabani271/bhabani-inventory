@@ -1,4 +1,4 @@
-import { purchaseRequest_model_default } from './chunk-3XMI2BOX.js';
+import { purchaseRequest_model_default } from './chunk-H7ZEJV4N.js';
 import cookieParser from 'cookie-parser';
 import express12, { Router } from 'express';
 import path2 from 'path';
@@ -1274,7 +1274,7 @@ var deleteMaterial = async (req, res) => {
       return res.status(404).json({ success: false, message: "Material request not found" });
     }
     try {
-      const PurchaseRequest = (await import('./purchaseRequest.model-X7GWMKTQ.js')).default;
+      const PurchaseRequest = (await import('./purchaseRequest.model-4OW6WBGO.js')).default;
       await PurchaseRequest.deleteMany({ materialRequestId: id });
     } catch (prErr) {
       console.warn("Failed to delete associated purchase requests:", prErr.message);
@@ -2482,6 +2482,8 @@ router10.get("/mr/:mrId", getAuditLogsByMR);
 router10.delete("/clear", clearAuditLogs);
 var auditLog_routes_default = router10;
 var quotationSchema = new mongoose2.Schema({
+  quotationId: { type: String, default: "" },
+  // e.g. QT-2026-001
   vendorName: { type: String, required: true },
   vendorContact: { type: String, default: "" },
   vendorAddress: { type: String, default: "" },
@@ -2491,7 +2493,17 @@ var quotationSchema = new mongoose2.Schema({
   warranty: { type: String, default: "" },
   paymentTerms: { type: String, default: "Net 30" },
   notes: { type: String, default: "" },
-  submittedAt: { type: Date, default: Date.now }
+  submittedAt: { type: Date, default: Date.now },
+  vendorStatus: {
+    type: String,
+    enum: ["Active", "Inactive", "Blacklisted"],
+    default: "Active"
+  },
+  selectionStatus: {
+    type: String,
+    enum: ["Pending", "Selected", "Rejected"],
+    default: "Pending"
+  }
 }, { _id: false });
 var procurementWorkflowSchema = new mongoose2.Schema(
   {
@@ -2531,6 +2543,8 @@ var procurementWorkflowSchema = new mongoose2.Schema(
     rfqResponseDeadline: { type: Date },
     // ── Quotations ──
     quotations: [quotationSchema],
+    vendorQuotationNumber: { type: String, default: "" },
+    // last/selected quotation ref
     // ── Vendor Selection ──
     selectedVendor: {
       vendorName: { type: String, default: "" },
@@ -2550,6 +2564,13 @@ var procurementWorkflowSchema = new mongoose2.Schema(
     poAmount: { type: Number, default: 0 },
     poExpectedDelivery: { type: String, default: "" },
     poApprovedBy: { type: String, default: "" },
+    poCreationDate: { type: Date },
+    // ← NEW: when PO was created
+    // ── Procurement Metadata ──
+    procurementOfficer: { type: String, default: "" },
+    // ← NEW: officer name
+    approvalDate: { type: Date },
+    // ← NEW: when vendor was selected/approved
     // ── GRN ──
     grnId: { type: String, default: "" },
     grnStatus: {
@@ -2622,6 +2643,61 @@ var getWorkflowByMR = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+var getWorkflowByPR = async (req, res) => {
+  try {
+    const { prId } = req.params;
+    const workflow = await procurementWorkflow_model_default.findOne({ prId });
+    if (!workflow) {
+      return res.status(404).json({ success: false, message: "No procurement workflow found for this PR." });
+    }
+    return res.status(200).json({ success: true, data: workflow });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+var getProcurementTraceability = async (req, res) => {
+  try {
+    const { materialRequestId } = req.params;
+    const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
+    if (!workflow) {
+      return res.status(404).json({ success: false, message: "No procurement workflow found." });
+    }
+    let purchaseRequest = null;
+    if (workflow.prId) {
+      purchaseRequest = await purchaseRequest_model_default.findOne({ requestId: workflow.prId });
+    }
+    const traceability = {
+      materialRequestId,
+      materialReferenceId: workflow.materialReferenceId,
+      prId: workflow.prId || "N/A",
+      prStatus: workflow.prStatus,
+      rfqId: workflow.rfqId || "N/A",
+      rfqStatus: workflow.rfqStatus,
+      rfqVendors: workflow.rfqVendors,
+      quotations: workflow.quotations,
+      vendorQuotationNumber: workflow.vendorQuotationNumber || "N/A",
+      selectedVendor: workflow.selectedVendor,
+      procurementOfficer: workflow.procurementOfficer || "N/A",
+      approvalDate: workflow.approvalDate || null,
+      poId: workflow.poId || "N/A",
+      poStatus: workflow.poStatus,
+      poAmount: workflow.poAmount,
+      poCreationDate: workflow.poCreationDate || null,
+      workflowStatus: workflow.workflowStatus,
+      vendorQuotations: purchaseRequest?.vendorQuotations || [],
+      chain: {
+        step1: { label: "Purchase Requisition", id: workflow.prId || "N/A", status: workflow.prStatus },
+        step2: { label: "RFQ", id: workflow.rfqId || "N/A", status: workflow.rfqStatus },
+        step3: { label: "Vendor Quotations", count: workflow.quotations.length, vendors: workflow.quotations.map((q) => q.vendorName) },
+        step4: { label: "Selected Vendor", name: workflow.selectedVendor?.vendorName || "N/A" },
+        step5: { label: "Purchase Order", id: workflow.poId || "N/A", status: workflow.poStatus, amount: workflow.poAmount }
+      }
+    };
+    return res.status(200).json({ success: true, data: traceability });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 var getAllWorkflows = async (_req, res) => {
   try {
     const workflows = await procurementWorkflow_model_default.find().sort({ createdAt: -1 });
@@ -2655,6 +2731,7 @@ var createRFQ = async (req, res) => {
     workflow.rfqVendors = rfqVendors;
     workflow.rfqCreatedAt = /* @__PURE__ */ new Date();
     workflow.rfqResponseDeadline = responseDeadline;
+    workflow.procurementOfficer = userName;
     workflow.workflowStatus = "RFQ Created";
     await workflow.save();
     const prevStatus = mr.status;
@@ -2662,6 +2739,16 @@ var createRFQ = async (req, res) => {
       status: "RFQ Created",
       linkedRfqId: rfqId
     });
+    if (workflow.prId) {
+      await purchaseRequest_model_default.findOneAndUpdate(
+        { requestId: workflow.prId },
+        {
+          rfqNumber: rfqId,
+          procurementOfficer: userName,
+          procurementStage: "RFQ Created"
+        }
+      );
+    }
     await writeAudit({
       userId,
       userName,
@@ -2702,8 +2789,10 @@ var submitQuotation = async (req, res) => {
     }
     const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
     if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    const quotationId = await generateSerialId("QT");
     const totalAmount = unitPrice * workflow.requestedQty;
     const quotation = {
+      quotationId,
       vendorName,
       vendorContact: vendorContact || "",
       vendorAddress: vendorAddress || "",
@@ -2713,23 +2802,42 @@ var submitQuotation = async (req, res) => {
       warranty: warranty || "",
       paymentTerms: paymentTerms || "Net 30",
       notes: notes || "",
-      submittedAt: /* @__PURE__ */ new Date()
+      submittedAt: /* @__PURE__ */ new Date(),
+      vendorStatus: "Active",
+      selectionStatus: "Pending"
     };
     workflow.quotations.push(quotation);
     workflow.rfqStatus = "Closed";
     workflow.workflowStatus = "Quotations Received";
     await workflow.save();
     const mr = await material_model_default.findByIdAndUpdate(materialRequestId, { status: "Quotations Received" }, { new: true });
+    if (workflow.prId) {
+      await purchaseRequest_model_default.findOneAndUpdate(
+        { requestId: workflow.prId },
+        {
+          $push: {
+            vendorQuotations: {
+              vendorName,
+              quotationAmount: totalAmount,
+              quotationDate: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+              vendorStatus: "Active",
+              selectionStatus: "Pending"
+            }
+          },
+          procurementStage: "Quotations Received"
+        }
+      );
+    }
     await writeAudit({
       userId,
       userName,
       transactionId: workflow.rfqId || materialRequestId,
       moduleName: "Quotation",
-      actionPerformed: `Quotation submitted by ${vendorName}: \u20B9${unitPrice}/unit, Total: \u20B9${totalAmount}`,
+      actionPerformed: `Quotation ${quotationId} submitted by ${vendorName}: \u20B9${unitPrice}/unit, Total: \u20B9${totalAmount}`,
       previousStatus: mr?.status || "RFQ Created",
       newStatus: "Quotations Received",
       materialRequestId,
-      metadata: { vendorName, unitPrice, totalAmount, deliveryDays }
+      metadata: { vendorName, unitPrice, totalAmount, deliveryDays, quotationId }
     });
     return res.status(201).json({ success: true, message: "Quotation submitted successfully.", data: workflow });
   } catch (error) {
@@ -2746,6 +2854,7 @@ var selectVendor = async (req, res) => {
       unitPrice,
       paymentTerms,
       deliveryDays,
+      quotationId,
       userName = "Procurement Manager",
       userId = "system"
     } = req.body;
@@ -2754,6 +2863,7 @@ var selectVendor = async (req, res) => {
     }
     const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
     if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    const approvalDate = /* @__PURE__ */ new Date();
     workflow.selectedVendor = {
       vendorName,
       vendorContact: vendorContact || "",
@@ -2762,9 +2872,48 @@ var selectVendor = async (req, res) => {
       paymentTerms: paymentTerms || "Net 30",
       deliveryDays: Number(deliveryDays) || 7
     };
+    workflow.approvalDate = approvalDate;
+    workflow.vendorQuotationNumber = quotationId || "";
+    workflow.quotations.forEach((q) => {
+      if (q.vendorName === vendorName) {
+        q.selectionStatus = "Selected";
+      } else if (q.selectionStatus === "Pending") {
+        q.selectionStatus = "Rejected";
+      }
+    });
     workflow.workflowStatus = "Vendor Selected";
     await workflow.save();
     const mr = await material_model_default.findByIdAndUpdate(materialRequestId, { status: "Vendor Selected" }, { new: true });
+    if (workflow.prId) {
+      await purchaseRequest_model_default.findOneAndUpdate(
+        { requestId: workflow.prId },
+        {
+          approvedVendorName: vendorName,
+          approvedVendorAmount: Number(unitPrice) * workflow.requestedQty,
+          approvedVendorDate: approvalDate,
+          vendorQuotationNumber: quotationId || "",
+          procurementStage: "Vendor Selected",
+          // Update selectionStatus in vendorQuotations array
+          $set: {
+            "vendorQuotations.$[selected].selectionStatus": "Selected"
+          }
+        },
+        {
+          arrayFilters: [{ "selected.vendorName": vendorName }]
+        }
+      );
+      await purchaseRequest_model_default.findOneAndUpdate(
+        { requestId: workflow.prId },
+        {
+          $set: {
+            "vendorQuotations.$[others].selectionStatus": "Rejected"
+          }
+        },
+        {
+          arrayFilters: [{ "others.vendorName": { $ne: vendorName }, "others.selectionStatus": "Pending" }]
+        }
+      );
+    }
     await writeAudit({
       userId,
       userName,
@@ -2796,27 +2945,63 @@ var createPO = async (req, res) => {
     }
     const workflow = await procurementWorkflow_model_default.findOne({ materialRequestId });
     if (!workflow) return res.status(404).json({ success: false, message: "Procurement workflow not found." });
+    if (workflow.workflowStatus !== "Vendor Selected" && workflow.workflowStatus !== "PO Created") {
+      return res.status(400).json({
+        success: false,
+        message: "PO can only be created after a vendor has been selected. Please complete vendor selection first."
+      });
+    }
     const poId = await generateSerialId("PO");
+    const poCreationDate = /* @__PURE__ */ new Date();
     workflow.poId = poId;
     workflow.poStatus = "Approved";
-    workflow.poAmount = Number(poAmount) || workflow.selectedVendor.unitPrice * workflow.requestedQty;
+    workflow.poAmount = Number(poAmount) || (workflow.selectedVendor?.unitPrice ?? 0) * workflow.requestedQty;
     workflow.poExpectedDelivery = poExpectedDelivery || "";
     workflow.poApprovedBy = approvedBy || userName;
+    workflow.poCreationDate = poCreationDate;
     workflow.workflowStatus = "PO Approved";
     await workflow.save();
     await material_model_default.findByIdAndUpdate(materialRequestId, { status: "PO Approved", linkedPoId: poId });
+    if (workflow.prId) {
+      await purchaseRequest_model_default.findOneAndUpdate(
+        { requestId: workflow.prId },
+        {
+          poNumber: poId,
+          procurementStage: "PO Created",
+          approvalDate: poCreationDate
+        }
+      );
+    }
     await writeAudit({
       userId,
       userName,
       transactionId: poId,
       moduleName: "Purchase Order",
-      actionPerformed: `Purchase Order ${poId} created and approved. Vendor: ${workflow.selectedVendor.vendorName}. Amount: \u20B9${workflow.poAmount}`,
+      actionPerformed: `Purchase Order ${poId} created and approved. Vendor: ${workflow.selectedVendor?.vendorName ?? "N/A"}. Amount: \u20B9${workflow.poAmount}. PR: ${workflow.prId || "N/A"}, RFQ: ${workflow.rfqId || "N/A"}`,
       previousStatus: "Vendor Selected",
       newStatus: "PO Approved",
       materialRequestId,
-      metadata: { poId, poAmount: workflow.poAmount, vendor: workflow.selectedVendor.vendorName }
+      metadata: {
+        poId,
+        poAmount: workflow.poAmount,
+        vendor: workflow.selectedVendor?.vendorName ?? "N/A",
+        prId: workflow.prId,
+        rfqId: workflow.rfqId
+      }
     });
-    return res.status(201).json({ success: true, message: `Purchase Order ${poId} created.`, data: { poId, workflow } });
+    return res.status(201).json({
+      success: true,
+      message: `Purchase Order ${poId} created.`,
+      data: {
+        poId,
+        prId: workflow.prId,
+        rfqId: workflow.rfqId,
+        vendorName: workflow.selectedVendor?.vendorName ?? "",
+        vendorQuotationNumber: workflow.vendorQuotationNumber,
+        poCreationDate,
+        workflow
+      }
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -2849,12 +3034,18 @@ var createGRN = async (req, res) => {
     workflow.workflowStatus = "GRN Completed";
     await workflow.save();
     await material_model_default.findByIdAndUpdate(materialRequestId, { status: "GRN Created", linkedGrnId: grnId });
+    if (workflow.prId) {
+      await purchaseRequest_model_default.findOneAndUpdate(
+        { requestId: workflow.prId },
+        { procurementStage: "GRN Created" }
+      );
+    }
     await writeAudit({
       userId,
       userName,
       transactionId: grnId,
       moduleName: "GRN",
-      actionPerformed: `GRN ${grnId} created. Received ${receivedQty} units of "${mr.productDetails}" from vendor ${workflow.selectedVendor.vendorName}`,
+      actionPerformed: `GRN ${grnId} created. Received ${receivedQty} units of "${mr.productDetails}" from vendor ${workflow.selectedVendor?.vendorName ?? "N/A"}`,
       previousStatus: "PO Approved",
       newStatus: "GRN Created",
       materialRequestId,
@@ -2936,6 +3127,12 @@ var completeStockIssue = async (req, res) => {
     workflow.issuedAt = /* @__PURE__ */ new Date();
     workflow.workflowStatus = "Completed";
     await workflow.save();
+    if (workflow.prId) {
+      await purchaseRequest_model_default.findOneAndUpdate(
+        { requestId: workflow.prId },
+        { procurementStage: "Completed" }
+      );
+    }
     await writeAudit({
       userId,
       userName,
@@ -2972,6 +3169,8 @@ var completeStockIssue = async (req, res) => {
 var router11 = express12.Router();
 router11.get("/workflows", getAllWorkflows);
 router11.get("/workflow/:mrId", getWorkflowByMR);
+router11.get("/workflow/by-pr/:prId", getWorkflowByPR);
+router11.get("/traceability/:materialRequestId", getProcurementTraceability);
 router11.post("/rfq", createRFQ);
 router11.post("/quotation", submitQuotation);
 router11.put("/select-vendor", selectVendor);

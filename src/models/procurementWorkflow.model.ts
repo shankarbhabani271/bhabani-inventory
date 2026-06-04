@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 const quotationSchema = new mongoose.Schema({
+  quotationId: { type: String, default: "" },      // e.g. QT-2026-001
   vendorName: { type: String, required: true },
   vendorContact: { type: String, default: "" },
   vendorAddress: { type: String, default: "" },
@@ -11,6 +12,16 @@ const quotationSchema = new mongoose.Schema({
   paymentTerms: { type: String, default: "Net 30" },
   notes: { type: String, default: "" },
   submittedAt: { type: Date, default: Date.now },
+  vendorStatus: {
+    type: String,
+    enum: ["Active", "Inactive", "Blacklisted"],
+    default: "Active",
+  },
+  selectionStatus: {
+    type: String,
+    enum: ["Pending", "Selected", "Rejected"],
+    default: "Pending",
+  },
 }, { _id: false });
 
 const procurementWorkflowSchema = new mongoose.Schema(
@@ -51,6 +62,7 @@ const procurementWorkflowSchema = new mongoose.Schema(
 
     // ── Quotations ──
     quotations: [quotationSchema],
+    vendorQuotationNumber: { type: String, default: "" }, // last/selected quotation ref
 
     // ── Vendor Selection ──
     selectedVendor: {
@@ -72,6 +84,11 @@ const procurementWorkflowSchema = new mongoose.Schema(
     poAmount: { type: Number, default: 0 },
     poExpectedDelivery: { type: String, default: "" },
     poApprovedBy: { type: String, default: "" },
+    poCreationDate: { type: Date },             // ← NEW: when PO was created
+
+    // ── Procurement Metadata ──
+    procurementOfficer: { type: String, default: "" },  // ← NEW: officer name
+    approvalDate: { type: Date },                        // ← NEW: when vendor was selected/approved
 
     // ── GRN ──
     grnId: { type: String, default: "" },

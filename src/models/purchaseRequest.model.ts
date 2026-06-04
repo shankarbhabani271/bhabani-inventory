@@ -1,5 +1,17 @@
 import mongoose from "mongoose";
 
+const vendorQuotationSummarySchema = new mongoose.Schema({
+  vendorName: { type: String, default: "" },
+  quotationAmount: { type: Number, default: 0 },
+  quotationDate: { type: String, default: "" },
+  vendorStatus: { type: String, default: "Active" },
+  selectionStatus: {
+    type: String,
+    enum: ["Pending", "Selected", "Rejected"],
+    default: "Pending",
+  },
+}, { _id: false });
+
 const purchaseRequestSchema = new mongoose.Schema(
   {
     // ERP-style serial ID: PR-2026-001, PR-2026-002, ...
@@ -66,7 +78,49 @@ const purchaseRequestSchema = new mongoose.Schema(
       type: String,
       enum: ["Pending", "Processing", "Delivered"],
       default: "Pending",
-    }
+    },
+
+    // ── Procurement Traceability Fields (NEW) ──
+    rfqNumber: {
+      type: String,
+      default: "",           // e.g. "RFQ-2026-001"
+    },
+    poNumber: {
+      type: String,
+      default: "",           // e.g. "PO-2026-001" — auto-filled when PO is created
+    },
+    vendorQuotationNumber: {
+      type: String,
+      default: "",           // e.g. "QT-2026-001"
+    },
+    procurementOfficer: {
+      type: String,
+      default: "",
+    },
+    approvalDate: {
+      type: Date,
+    },
+    procurementStage: {
+      type: String,
+      enum: [
+        "PR Created",
+        "RFQ Created",
+        "Quotations Received",
+        "Vendor Selected",
+        "PO Created",
+        "GRN Created",
+        "Completed",
+        "",
+      ],
+      default: "",
+    },
+    // All vendor quotations for this PR (populated as quotations are submitted)
+    vendorQuotations: [vendorQuotationSummarySchema],
+
+    // Approved vendor details (populated when vendor is selected)
+    approvedVendorName: { type: String, default: "" },
+    approvedVendorAmount: { type: Number, default: 0 },
+    approvedVendorDate: { type: Date },
   },
   { timestamps: true }
 );
