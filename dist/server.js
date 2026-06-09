@@ -1,7 +1,7 @@
 import { purchaseRequest_model_default } from './chunk-H7ZEJV4N.js';
 import cookieParser from 'cookie-parser';
 import express12, { Router } from 'express';
-import path2 from 'path';
+import path3 from 'path';
 import { fileURLToPath } from 'url';
 import morgan from 'morgan';
 import winston from 'winston';
@@ -20,7 +20,7 @@ import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import multer from 'multer';
 
-var LOG_DIR = path2.resolve(process.cwd(), "logs");
+var LOG_DIR = path3.resolve(process.cwd(), "logs");
 if (!fs2.existsSync(LOG_DIR)) {
   fs2.mkdirSync(LOG_DIR, { recursive: true });
 }
@@ -34,14 +34,14 @@ var logger = winston.createLogger({
   format: baseFormat,
   transports: [
     new DailyRotateFile({
-      filename: path2.join(LOG_DIR, "app-%DATE%.log"),
+      filename: path3.join(LOG_DIR, "app-%DATE%.log"),
       datePattern: "YYYY-MM-DD",
       maxSize: "20m",
       maxFiles: "14d",
       zippedArchive: true
     }),
     new DailyRotateFile({
-      filename: path2.join(LOG_DIR, "error-%DATE%.log"),
+      filename: path3.join(LOG_DIR, "error-%DATE%.log"),
       datePattern: "YYYY-MM-DD",
       level: "error",
       maxSize: "20m",
@@ -819,6 +819,8 @@ var applyCores = ({ app: app2 }) => {
     "http://localhost:4550",
     "http://localhost:5173",
     "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
     "https://bagforinveo.onrender.com"
   ];
   if (process.env.CLIENT_URL) {
@@ -829,7 +831,7 @@ var applyCores = ({ app: app2 }) => {
     cors({
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
+        if (origin.endsWith(".loca.lt") || origin.endsWith(".lhr.life") || origin.endsWith(".serveousercontent.com") || allowedOrigins.includes(origin)) {
           return callback(null, true);
         }
         return callback(new Error("Not allowed by CORS"));
@@ -2128,7 +2130,7 @@ var settingsSchema = new Schema(
   }
 );
 var SettingsModel = mongoose2.model("Settings", settingsSchema);
-var uploadDir = path2.join(process.cwd(), "public/uploads/logos");
+var uploadDir = path3.join(process.cwd(), "public/uploads/logos");
 if (!fs2.existsSync(uploadDir)) {
   fs2.mkdirSync(uploadDir, { recursive: true });
 }
@@ -2138,7 +2140,7 @@ var storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (_req, file, cb) => {
-    const ext = path2.extname(file.originalname).toLowerCase();
+    const ext = path3.extname(file.originalname).toLowerCase();
     cb(null, `org-logo-${Date.now()}${ext}`);
   }
 });
@@ -2277,7 +2279,7 @@ var uploadLogo = async (req, res) => {
         settings = new SettingsModel();
       }
       if (settings.logoUrl) {
-        const oldPath = path2.join(process.cwd(), "public", settings.logoUrl);
+        const oldPath = path3.join(process.cwd(), "public", settings.logoUrl);
         if (fs2.existsSync(oldPath)) {
           fs2.unlinkSync(oldPath);
         }
@@ -2314,7 +2316,7 @@ var removeLogo = async (_req, res) => {
       return res.status(404).json({ success: false, message: "Settings not found." });
     }
     if (settings.logoUrl) {
-      const filePath = path2.join(process.cwd(), "public", settings.logoUrl);
+      const filePath = path3.join(process.cwd(), "public", settings.logoUrl);
       if (fs2.existsSync(filePath)) {
         fs2.unlinkSync(filePath);
       }
@@ -3630,11 +3632,12 @@ var qc_routes_default = router12;
 
 // src/server.ts
 var __filename$1 = fileURLToPath(import.meta.url);
-var __dirname$1 = path2.dirname(__filename$1);
+path3.dirname(__filename$1);
 var app = express12();
-var publicDir = path2.join(process.cwd(), "public");
+var publicDir = path3.join(process.cwd(), "public");
 app.use(express12.static(publicDir));
-app.use("/uploads", express12.static(path2.join(process.cwd(), "public/uploads")));
+app.use("/uploads", express12.static(path3.join(process.cwd(), "public/uploads")));
+app.use(express12.static(path3.join(process.cwd(), "../inventry/dist")));
 var server = createServer(app);
 app.use(response_middleware_default);
 app.use(express12.json());
@@ -3647,7 +3650,7 @@ var initialize = () => {
 initialize();
 server_config_default({ server });
 app.get("/", (_, res) => {
-  res.sendFile(path2.join(__dirname$1, "../public/starter.html"));
+  res.sendFile(path3.join(process.cwd(), "../inventry/dist/index.html"));
 });
 app.set("trust proxy", true);
 app.use(requestContextMiddleware);
@@ -3666,6 +3669,12 @@ app.use("/api/audit-log", auditLog_routes_default);
 app.use("/api/procurement", procurement_routes_default);
 app.use("/api/qc", qc_routes_default);
 app.use("/api/employees", employeeRoutes_default);
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    return next();
+  }
+  res.sendFile(path3.join(process.cwd(), "../inventry/dist/index.html"));
+});
 app.use(notFoundMiddleware);
 app.use(errorHandler);
 

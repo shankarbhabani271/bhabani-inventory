@@ -7,6 +7,8 @@ export const applyCores = ({ app }: { app: AppType }) => {
     "http://localhost:4550",
     "http://localhost:5173",
     "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
     "https://bagforinveo.onrender.com"
   ];
 
@@ -21,7 +23,7 @@ export const applyCores = ({ app }: { app: AppType }) => {
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
 
-        if (allowedOrigins.includes(origin)) {
+        if (origin.endsWith(".loca.lt") || origin.endsWith(".lhr.life") || origin.endsWith(".serveousercontent.com") || allowedOrigins.includes(origin)) {
           return callback(null, true);
         }
 

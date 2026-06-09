@@ -34,6 +34,7 @@ import qcRoutes from "./routes/qc.routes.js";
 const publicDir = path.join(process.cwd(), "public");
 app.use(express.static(publicDir));
 app.use("/uploads", express.static(path.join(process.cwd(), "public/uploads")));
+app.use(express.static(path.join(process.cwd(), "../inventry/dist")));
 export type AppType = typeof app; export const server = createServer(app);
 app.use(responseHandler);
 app.use(express.json());
@@ -51,7 +52,7 @@ initialize();
 initializeServer({ server });
 
 app.get("/", (_: Request, res: ExpressResponse) => {
-  res.sendFile(path.join(__dirname, "../public/starter.html"));
+  res.sendFile(path.join(process.cwd(), "../inventry/dist/index.html"));
 });
 
 
@@ -78,6 +79,14 @@ app.use("/api/qc", qcRoutes);
 
 
 app.use("/api/employees", employeeRoutes);
+
+app.get("*", (req: Request, res: ExpressResponse, next) => {
+  if (req.path.startsWith("/api")) {
+    return next();
+  }
+  res.sendFile(path.join(process.cwd(), "../inventry/dist/index.html"));
+});
+
 app.use(notFoundMiddleware);
 
 app.use(errorHandler);
